@@ -473,7 +473,7 @@ dialog.lightbox img { max-width: 96vw; max-height: 94vh; border-radius: 8px; cur
       <div class="copy">
         <span class="eyebrow">Editing</span>
         <h2>Change the model. Get a clean diff.</h2>
-        <p>Rename, retype, add, delete, specialize, mark maturity or write a doc comment. Every dialog says what it will change before it writes a thing.</p>
+        <p>You can rename, retype, add, delete, specialize, mark maturity or write a doc comment. Every dialog says what it will change before it writes a thing.</p>
         <div class="diff" aria-label="The diff a rename produces">
           <div class="file"><span>structure.sysml</span><span>2 lines changed</span></div>
 <pre><span class="c">     #implemented</span><span class="d">-    part def &lt;'D.2'&gt; FlightController {</span><span class="a">+    part def &lt;'D.2'&gt; Autopilot {</span><span class="c">  …</span><span class="d">-        part fc : FlightController;</span><span class="a">+        part fc : Autopilot;</span></pre>
@@ -577,25 +577,25 @@ dialog.lightbox img { max-width: 96vw; max-height: 94vh; border-radius: 8px; cur
     <div class="section-head">
       <span class="eyebrow">Download</span>
       <h2>Free for Windows, macOS and Linux.</h2>
-      <p>One download, nothing else to install. A sample model comes with it, so there is something to open straight away.</p>
+      <p>A regular installer for each system, nothing else to install first. The sample models come with it: <i>Try sample</i> on the start page opens one straight away.</p>
       <div style="margin-top:28px"><div class="dl" data-dl><a class="btn primary dl-main" href="https://github.com/SetZero/sysml-studio/releases/latest"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg><span>Download</span></a></div></div>
     </div>
     <div class="install">
       <div data-os="windows">
         <h3>Windows</h3>
-        <p>Unzip and run <b>SysML Studio.exe</b>.</p>
+        <p>Run the installer; SysML Studio appears in the Start menu.</p>
         <p>Windows may not know the publisher yet: choose <i>More info</i>, then <i>Run anyway</i>.</p>
       </div>
       <div data-os="macos">
         <h3>macOS</h3>
-        <p>Unzip and drag <b>SysML Studio</b> to Applications.</p>
-        <p>The first time, right-click it and choose <i>Open</i>.</p>
+        <p>Open the installer; SysML Studio goes into Applications.</p>
+        <p>The first time, right-click the installer and choose <i>Open</i>.</p>
       </div>
       <div data-os="linux">
         <h3>Linux</h3>
-        <p>On Debian or Ubuntu, install the package and start it from the menu:</p>
-        <pre class="cmd">sudo apt install ./sysml-studio_amd64.deb</pre>
-        <p>Anywhere else: unpack the archive and run <code>sysml-studio</code>.</p>
+        <p>Install the package, then start SysML Studio from the menu:</p>
+        <pre class="cmd">sudo apt install ./sysml-studio_amd64.deb
+sudo dnf install ./sysml-studio-x86_64.rpm</pre>
       </div>
     </div>
   </div>
@@ -649,15 +649,22 @@ dialog.lightbox img { max-width: 96vw; max-height: 94vh; border-radius: 8px; cur
   // Downloads. The names never change between releases, so the links go
   // to releases/latest/download/<name>; the API only adds version and size.
   var releases = "https://github.com/SetZero/sysml-studio/releases/latest";
+  // Installers first: pick() takes the first that fits the reader.
   var packages = [
-    { os: "windows", arch: "x64", name: "SysML-Studio-windows-x64.zip", label: "x64 · .zip" },
-    { os: "windows", arch: "arm64", name: "SysML-Studio-windows-arm64.zip", label: "ARM64 · .zip" },
-    { os: "macos", arch: "arm64", name: "SysML-Studio-macos-arm64.zip", label: "Apple silicon · .zip" },
-    { os: "macos", arch: "x64", name: "SysML-Studio-macos-x64.zip", label: "Intel · .zip" },
-    { os: "linux", arch: "x64", name: "sysml-studio_amd64.deb", label: "x64 · .deb for Debian, Ubuntu" },
-    { os: "linux", arch: "x64", name: "SysML-Studio-linux-x64.tar.gz", label: "x64 · .tar.gz" },
-    { os: "linux", arch: "arm64", name: "sysml-studio_arm64.deb", label: "ARM64 · .deb for Debian, Ubuntu" },
-    { os: "linux", arch: "arm64", name: "SysML-Studio-linux-arm64.tar.gz", label: "ARM64 · .tar.gz" }
+    { os: "windows", arch: "x64", name: "SysML-Studio-windows-x64.msi", label: "x64 · installer (.msi)" },
+    { os: "windows", arch: "arm64", name: "SysML-Studio-windows-arm64.msi", label: "ARM64 · installer (.msi)" },
+    { os: "windows", arch: "x64", name: "SysML-Studio-windows-x64.zip", label: "x64 · portable (.zip)", portable: true },
+    { os: "windows", arch: "arm64", name: "SysML-Studio-windows-arm64.zip", label: "ARM64 · portable (.zip)", portable: true },
+    { os: "macos", arch: "arm64", name: "SysML-Studio-macos-arm64.pkg", label: "Apple silicon · installer (.pkg)" },
+    { os: "macos", arch: "x64", name: "SysML-Studio-macos-x64.pkg", label: "Intel · installer (.pkg)" },
+    { os: "macos", arch: "arm64", name: "SysML-Studio-macos-arm64.zip", label: "Apple silicon · app (.zip)", portable: true },
+    { os: "macos", arch: "x64", name: "SysML-Studio-macos-x64.zip", label: "Intel · app (.zip)", portable: true },
+    { os: "linux", arch: "x64", name: "sysml-studio_amd64.deb", label: "x64 · Debian, Ubuntu (.deb)" },
+    { os: "linux", arch: "x64", name: "sysml-studio-x86_64.rpm", label: "x64 · Fedora, openSUSE (.rpm)", rpm: true },
+    { os: "linux", arch: "x64", name: "SysML-Studio-linux-x64.tar.gz", label: "x64 · portable (.tar.gz)", portable: true },
+    { os: "linux", arch: "arm64", name: "sysml-studio_arm64.deb", label: "ARM64 · Debian, Ubuntu (.deb)" },
+    { os: "linux", arch: "arm64", name: "sysml-studio-aarch64.rpm", label: "ARM64 · Fedora, openSUSE (.rpm)", rpm: true },
+    { os: "linux", arch: "arm64", name: "SysML-Studio-linux-arm64.tar.gz", label: "ARM64 · portable (.tar.gz)", portable: true }
   ];
   var osNames = { windows: "Windows", macos: "macOS", linux: "Linux" };
 
@@ -672,12 +679,13 @@ dialog.lightbox img { max-width: 96vw; max-height: 94vh; border-radius: 8px; cur
       : /Linux|X11|CrOS/i.test(platform + ua) ? "linux" : null;
     // Most Macs sold today are Apple silicon, and Safari does not say.
     var arch = os === "macos" || /aarch64|arm64/i.test(ua) ? "arm64" : "x64";
-    return { os: os, arch: arch, deb: /Ubuntu|Debian|Mint|Pop!_OS/i.test(ua) };
+    return { os: os, arch: arch, rpm: /Fedora|Red Hat|SUSE|CentOS|Rocky|Alma/i.test(ua) };
   }
 
   function pick(system) {
-    var fits = packages.filter(function (p) { return p.os === system.os && p.arch === system.arch; });
-    if (system.os === "linux" && !system.deb) fits.reverse(); // the tarball runs anywhere
+    var fits = packages.filter(function (p) {
+      return p.os === system.os && p.arch === system.arch && !p.portable && !!p.rpm === !!system.rpm;
+    });
     return fits[0] || null;
   }
 

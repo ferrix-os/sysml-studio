@@ -36,17 +36,19 @@ without a project database.
 ## Download
 
 Get the [latest release](https://github.com/SetZero/sysml-studio/releases/latest).
-Nothing else needs to be installed, and a sample model comes with it.
+Nothing else needs to be installed, and the sample models come with it.
 
-| System | Package |
-|---|---|
-| Windows | [x64](https://github.com/SetZero/sysml-studio/releases/latest/download/SysML-Studio-windows-x64.zip) · [ARM64](https://github.com/SetZero/sysml-studio/releases/latest/download/SysML-Studio-windows-arm64.zip) |
-| macOS | [Apple silicon](https://github.com/SetZero/sysml-studio/releases/latest/download/SysML-Studio-macos-arm64.zip) · [Intel](https://github.com/SetZero/sysml-studio/releases/latest/download/SysML-Studio-macos-x64.zip) |
-| Debian, Ubuntu | [amd64](https://github.com/SetZero/sysml-studio/releases/latest/download/sysml-studio_amd64.deb) · [arm64](https://github.com/SetZero/sysml-studio/releases/latest/download/sysml-studio_arm64.deb) |
-| Other Linux | [x64](https://github.com/SetZero/sysml-studio/releases/latest/download/SysML-Studio-linux-x64.tar.gz) · [ARM64](https://github.com/SetZero/sysml-studio/releases/latest/download/SysML-Studio-linux-arm64.tar.gz) |
+| System | Installer | Portable |
+|---|---|---|
+| Windows | [x64](https://github.com/SetZero/sysml-studio/releases/latest/download/SysML-Studio-windows-x64.msi) · [ARM64](https://github.com/SetZero/sysml-studio/releases/latest/download/SysML-Studio-windows-arm64.msi) (`.msi`) | [x64](https://github.com/SetZero/sysml-studio/releases/latest/download/SysML-Studio-windows-x64.zip) · [ARM64](https://github.com/SetZero/sysml-studio/releases/latest/download/SysML-Studio-windows-arm64.zip) |
+| macOS | [Apple silicon](https://github.com/SetZero/sysml-studio/releases/latest/download/SysML-Studio-macos-arm64.pkg) · [Intel](https://github.com/SetZero/sysml-studio/releases/latest/download/SysML-Studio-macos-x64.pkg) (`.pkg`) | [Apple silicon](https://github.com/SetZero/sysml-studio/releases/latest/download/SysML-Studio-macos-arm64.zip) · [Intel](https://github.com/SetZero/sysml-studio/releases/latest/download/SysML-Studio-macos-x64.zip) |
+| Debian, Ubuntu | [amd64](https://github.com/SetZero/sysml-studio/releases/latest/download/sysml-studio_amd64.deb) · [arm64](https://github.com/SetZero/sysml-studio/releases/latest/download/sysml-studio_arm64.deb) (`.deb`) | [x64](https://github.com/SetZero/sysml-studio/releases/latest/download/SysML-Studio-linux-x64.tar.gz) · [ARM64](https://github.com/SetZero/sysml-studio/releases/latest/download/SysML-Studio-linux-arm64.tar.gz) |
+| Fedora, openSUSE | [x86_64](https://github.com/SetZero/sysml-studio/releases/latest/download/sysml-studio-x86_64.rpm) · [aarch64](https://github.com/SetZero/sysml-studio/releases/latest/download/sysml-studio-aarch64.rpm) (`.rpm`) | same as above |
 
 The builds are not code-signed yet, so Windows and macOS ask once before
-they open it.
+they run the installer: *More info* → *Run anyway* on Windows, right-click →
+*Open* on macOS. *Try sample* on the start page opens a copy of the drone
+sample in your documents, so you can change it.
 
 ## Why SysML Studio
 
@@ -193,9 +195,9 @@ set it, commit, and push a tag of that version:
 git tag v0.2.0 && git push origin v0.2.0
 ```
 
-The `Release` workflow then builds every package with `scripts/package.sh`,
-starts the Windows, Linux and macOS ones with `scripts/smoke.sh` to check
-they open, and publishes them with checksums as a GitHub release. It refuses
+The `Release` workflow then builds every package with `scripts/package.sh`
+(the `.msi` needs WiX 5, the `.rpm` rpmbuild), installs the Windows, macOS
+and Debian ones and starts them with `scripts/smoke.sh` to check they open, and publishes them with checksums as a GitHub release. It refuses
 a tag that does not match `VersionPrefix`. Run by hand, it builds and checks
 the packages without publishing. Package names carry no version, so
 `releases/latest/download/<name>` always
