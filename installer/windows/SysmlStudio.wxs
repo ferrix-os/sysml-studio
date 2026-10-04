@@ -22,8 +22,8 @@
 
     <Icon Id="SysmlStudio.ico" SourceFile="src\SysmlStudio.App\Assets\Icon\sysml-studio.ico" />
     <Property Id="ARPPRODUCTICON" Value="SysmlStudio.ico" />
-    <Property Id="ARPURLINFOABOUT" Value="https://setzero.github.io/sysml-studio/" />
-    <Property Id="ARPHELPLINK" Value="https://github.com/SetZero/sysml-studio" />
+    <Property Id="ARPURLINFOABOUT" Value="https://ferrix-os.github.io/sysml-studio/" />
+    <Property Id="ARPHELPLINK" Value="https://github.com/ferrix-os/sysml-studio" />
 
     <StandardDirectory Id="ProgramFiles64Folder">
       <Directory Id="INSTALLFOLDER" Name="SysML Studio" />

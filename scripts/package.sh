@@ -128,7 +128,7 @@ Package: sysml-studio
 Version: $version
 Architecture: $debarch
 Maintainer: SetZero <SetZero@users.noreply.github.com>
-Homepage: https://setzero.github.io/sysml-studio/
+Homepage: https://ferrix-os.github.io/sysml-studio/
 Section: devel
 Priority: optional
 Depends: libc6, libfontconfig1, libx11-6, libice6, libsm6
@@ -154,7 +154,7 @@ Version: ${version//-/\~}
 Release: 1
 Summary: Graphical viewer and editor for SysML v2 models
 License: MIT
-URL: https://setzero.github.io/sysml-studio/
+URL: https://ferrix-os.github.io/sysml-studio/
 Requires: fontconfig, libX11, libICE, libSM
 AutoReqProv: no
 # The program is one bundle: stripping or splitting it would break it.

@@ -7,16 +7,16 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/SetZero/sysml-studio/actions/workflows/ci.yml"><img src="https://github.com/SetZero/sysml-studio/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/ferrix-os/sysml-studio/actions/workflows/ci.yml"><img src="https://github.com/ferrix-os/sysml-studio/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/badge/.NET-10-512BD4" alt=".NET 10">
   <img src="https://img.shields.io/badge/Avalonia-12-8B44AC" alt="Avalonia 12">
   <img src="https://img.shields.io/badge/SysML-v2-4a6a9c" alt="SysML v2">
-  <a href="https://github.com/SetZero/sysml-studio/releases/latest"><img src="https://img.shields.io/github/v/release/SetZero/sysml-studio?label=release" alt="Latest release"></a>
+  <a href="https://github.com/ferrix-os/sysml-studio/releases/latest"><img src="https://img.shields.io/github/v/release/ferrix-os/sysml-studio?label=release" alt="Latest release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/licence-MIT-2f7a4b" alt="MIT licence"></a>
 </p>
 
 <p align="center">
-  <a href="https://setzero.github.io/sysml-studio/"><b>Website</b></a> ·
+  <a href="https://ferrix-os.github.io/sysml-studio/"><b>Website</b></a> ·
   <a href="#download"><b>Download</b></a> ·
   <a href="#diagrams"><b>Diagrams</b></a> ·
   <a href="#development"><b>Development</b></a>
@@ -35,15 +35,15 @@ without a project database.
 
 ## Download
 
-Get the [latest release](https://github.com/SetZero/sysml-studio/releases/latest).
+Get the [latest release](https://github.com/ferrix-os/sysml-studio/releases/latest).
 Nothing else needs to be installed, and a sample model comes with it.
 
 | System | Package |
 |---|---|
-| Windows | [x64](https://github.com/SetZero/sysml-studio/releases/latest/download/SysML-Studio-windows-x64.zip) · [ARM64](https://github.com/SetZero/sysml-studio/releases/latest/download/SysML-Studio-windows-arm64.zip) |
-| macOS | [Apple silicon](https://github.com/SetZero/sysml-studio/releases/latest/download/SysML-Studio-macos-arm64.zip) · [Intel](https://github.com/SetZero/sysml-studio/releases/latest/download/SysML-Studio-macos-x64.zip) |
-| Debian, Ubuntu | [amd64](https://github.com/SetZero/sysml-studio/releases/latest/download/sysml-studio_amd64.deb) · [arm64](https://github.com/SetZero/sysml-studio/releases/latest/download/sysml-studio_arm64.deb) |
-| Other Linux | [x64](https://github.com/SetZero/sysml-studio/releases/latest/download/SysML-Studio-linux-x64.tar.gz) · [ARM64](https://github.com/SetZero/sysml-studio/releases/latest/download/SysML-Studio-linux-arm64.tar.gz) |
+| Windows | [x64](https://github.com/ferrix-os/sysml-studio/releases/latest/download/SysML-Studio-windows-x64.zip) · [ARM64](https://github.com/ferrix-os/sysml-studio/releases/latest/download/SysML-Studio-windows-arm64.zip) |
+| macOS | [Apple silicon](https://github.com/ferrix-os/sysml-studio/releases/latest/download/SysML-Studio-macos-arm64.zip) · [Intel](https://github.com/ferrix-os/sysml-studio/releases/latest/download/SysML-Studio-macos-x64.zip) |
+| Debian, Ubuntu | [amd64](https://github.com/ferrix-os/sysml-studio/releases/latest/download/sysml-studio_amd64.deb) · [arm64](https://github.com/ferrix-os/sysml-studio/releases/latest/download/sysml-studio_arm64.deb) |
+| Other Linux | [x64](https://github.com/ferrix-os/sysml-studio/releases/latest/download/SysML-Studio-linux-x64.tar.gz) · [ARM64](https://github.com/ferrix-os/sysml-studio/releases/latest/download/SysML-Studio-linux-arm64.tar.gz) |
 
 The builds are not code-signed yet, so Windows and macOS ask once before
 they open it.
@@ -116,7 +116,7 @@ Needs the .NET 10 SDK and a JDK (ANTLR generates the parser at build time;
 `Antlr4BuildTasks` downloads a JDK if there is none).
 
 ```
-git clone https://github.com/SetZero/sysml-studio
+git clone https://github.com/ferrix-os/sysml-studio
 cd sysml-studio
 dotnet build SysmlStudio.slnx
 dotnet run --project src/SysmlStudio.App -- samples/drone
@@ -203,7 +203,7 @@ serves the newest one.
 
 ### Screenshots and website
 
-The pictures in this README and on the [website](https://setzero.github.io/sysml-studio/)
+The pictures in this README and on the [website](https://ferrix-os.github.io/sysml-studio/)
 are rendered from the real window, headless, over `samples/drone`, each in the
 light and the dark theme:
 
