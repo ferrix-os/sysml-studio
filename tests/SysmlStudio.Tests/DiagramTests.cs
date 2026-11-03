@@ -270,8 +270,40 @@ public sealed class DiagramTests
         Assert.Contains(DiagramKind.Package, DiagramBuilder.KindsFor(workspace.Find("Parts")!));
     }
 
+    [Fact]
+    public void AClassDiagramHasCompartmentsAndUmlsEdges()
+    {
+        var diagram = GarageDiagram(DiagramKind.Class, "Garage");
+        var lift = diagram.Nodes.Single(n => n.Label == "Lift");
+        var machine = diagram.Nodes.Single(n => n.Label == "Machine");
+
+        Assert.Equal(NodeShape.Class, lift.Shape);
+        Assert.Contains("+ load : Real", lift.Features);
+        Assert.Contains("- hours : Real", lift.Features);
+        Assert.Contains("+ «port» supply : ~Mains", lift.Features);
+        Assert.Contains("+ start(in key : String, out ok : Boolean)", machine.Operations);
+        Assert.True(machine.IsAbstract);
+        Assert.Equal("{abstract}", machine.Stereotype);
+        Assert.Null(lift.Stereotype);
+        Assert.Contains("petrol", diagram.Nodes.Single(n => n.Label == "Fuel").Features);
+        Assert.Equal("«enumeration»", diagram.Nodes.Single(n => n.Label == "Fuel").Stereotype);
+
+        Assert.Contains(diagram.Edges, e => e.Kind == RelationKind.Specialization && e.Source == lift && e.Target == machine);
+        var composition = Assert.Single(diagram.Edges, e => e.Kind == RelationKind.Composition && e.Source == lift && e.Target.Label == "Arm");
+        Assert.True(composition.IsHeadless);
+        Assert.Equal("arm", composition.Label);
+        Assert.Contains(diagram.Edges, e => e.Kind == RelationKind.Association && e.Source == lift && e.Target.Label == "Mechanic" && e.Label == "owner");
+
+        // A property is an edge or a compartment line, not both.
+        Assert.DoesNotContain(lift.Features, f => f.Contains("arm", StringComparison.Ordinal));
+
+        // Behaviour and metadata have diagrams of their own.
+        Assert.DoesNotContain(diagram.Nodes, n => n.Label == "Safety");
+    }
+
     [Theory]
     [InlineData(DiagramKind.Package, "Garage")]
+    [InlineData(DiagramKind.Class, "Garage")]
     public void EveryKindLaysOutWithNoOverlapAndNoEdgeThroughABox(DiagramKind kind, string root)
     {
         var diagram = GarageDiagram(kind, root);
@@ -300,6 +332,9 @@ public sealed class DiagramTests
     [Theory]
     [InlineData(DiagramKind.Package, "Garage", "url(#containment)")]
     [InlineData(DiagramKind.Package, "Garage", "«access»")]
+    [InlineData(DiagramKind.Class, "Garage", "url(#diamond)")]
+    [InlineData(DiagramKind.Class, "Garage", "url(#triangle)")]
+    [InlineData(DiagramKind.Class, "Garage", "font-style=\"italic\"")]
     public void TheSvgSaysWhatTheCanvasSays(DiagramKind kind, string root, string expected)
     {
         var diagram = GarageDiagram(kind, root);
@@ -324,6 +359,7 @@ public sealed class DiagramTests
 
     [Theory]
     [InlineData(DiagramKind.Package, "DroneSoftware")]
+    [InlineData(DiagramKind.Class, "DroneStructure")]
     public void TheDroneSampleHasSomethingForEveryStructuralKind(DiagramKind kind, string root)
     {
         var element = SysmlWorkspace.Load(Path.Combine(AppContext.BaseDirectory, "Samples", "drone")).Find(root)!;

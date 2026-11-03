@@ -329,6 +329,8 @@ public sealed class WindowTests
                      (DiagramKind.Definition, "FerrixBoot"),
                      (DiagramKind.Package, "FerrixLifecycle"),
                      (DiagramKind.Package, "FerrixStructure"),
+                     (DiagramKind.Class, "FerrixStructure"),
+                     (DiagramKind.Class, "FerrixStructure::Kernel"),
                  })
         {
             if (shell.Workspace!.Find(name) is not { } element)
@@ -450,6 +452,7 @@ public sealed class WindowTests
         foreach (var (kind, root) in new[]
                  {
                      (DiagramKind.Package, "Garage"),
+                     (DiagramKind.Class, "Garage"),
                  })
         {
             shell.Select(workspace.Find(root)!);
@@ -476,6 +479,7 @@ public sealed class WindowTests
             foreach (var (kind, root) in new[]
                      {
                          (DiagramKind.Package, "DroneSoftware"),
+                         (DiagramKind.Class, "DroneStructure"),
                      })
             {
                 shell.Select(shell.Workspace!.Find(root)!);

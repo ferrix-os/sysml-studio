@@ -16,6 +16,13 @@ namespace SysmlStudio.Diagrams;
 /// </summary>
 public static partial class DiagramBuilder
 {
+    /// <summary>The definitions a class diagram draws. Behaviour, requirements and metadata have diagrams of their own.</summary>
+    private static readonly HashSet<string> ClassKinds =
+    [
+        "part def", "item def", "attribute def", "enumeration def", "occurrence def", "port def",
+        "connection def", "interface def", "flow def", "allocation def", "individual def",
+    ];
+
     /// <summary>What the model says once, shared by every view of it, so that browsing a large model does not scan it per element.</summary>
     private static readonly ConditionalWeakTable<Element, StructuralIndex> Indexes = [];
 
@@ -31,9 +38,13 @@ public static partial class DiagramBuilder
         {
             if (PackagesOnDiagram(element, index).Count >= 2)
                 kinds.Add(DiagramKind.Package);
+            if (element.Children.Any(IsClassLike))
+                kinds.Add(DiagramKind.Class);
             return kinds;
         }
 
+        if (IsClassLike(element))
+            kinds.Add(DiagramKind.Class);
         return kinds;
     }
 
@@ -96,6 +107,116 @@ public static partial class DiagramBuilder
         "protected" => "# ",
         _ => "+ ",
     };
+
+    // ----- class --------------------------------------------------------------
+
+    /// <summary>
+    /// For a package: its definitions. For one definition: it and what is one
+    /// relation away. Each is a class with its attributes and operations in
+    /// compartments, and what it owns is an edge where the type is on the
+    /// diagram: a filled diamond for a part, an arrow for a reference.
+    /// </summary>
+    private static Diagram ClassDiagram(Element root)
+    {
+        var diagram = new Diagram(DiagramKind.Class, root);
+        var onDiagram = (IsPackage(root) ? root.Children.Where(IsClassLike) : Neighbourhood(root).Where(IsClassLike)).Distinct().ToList();
+
+        foreach (var element in onDiagram)
+            diagram.Nodes.Add(ClassNode(element, onDiagram));
+
+        foreach (var element in onDiagram)
+        {
+            foreach (var relation in element.Relations.Where(r => r.Kind == RelationKind.Specialization))
+                Connect(diagram, element, relation.Target, RelationKind.Specialization);
+
+            foreach (var feature in element.Children.Where(c => DrawnAsEdge(c, onDiagram, element)))
+            {
+                var isReference = feature.Kind == "ref";
+                var type = feature.Relations.First(r => r.Kind == RelationKind.Typing).Target!;
+                diagram.Edges.Add(new DiagramEdge(diagram.NodeFor(element)!, diagram.NodeFor(type)!,
+                    isReference ? RelationKind.Association : RelationKind.Composition, feature.DisplayName + feature.Multiplicity)
+                {
+                    IsHeadless = !isReference,
+                });
+            }
+        }
+
+        foreach (var (from, to) in IndexOf(root).Dependencies)
+            Connect(diagram, from, to, RelationKind.Dependency);
+
+        return diagram;
+    }
+
+    /// <summary>UML shows a property as an edge or in the compartment, not both; ports and values stay in the compartment.</summary>
+    private static bool DrawnAsEdge(Element feature, List<Element> onDiagram, Element owner)
+        => feature.Name is not null
+           && feature.Kind is "part" or "item" or "occurrence" or "ref"
+           && feature.Relations.FirstOrDefault(r => r.Kind == RelationKind.Typing)?.Target is { } type
+           && !ReferenceEquals(type, owner)
+           && onDiagram.Contains(type);
+
+    private static DiagramNode ClassNode(Element element, List<Element> onDiagram)
+    {
+        var node = new DiagramNode(element, element.DisplayName, Abstractly(element, ClassStereotype(element))) { Shape = NodeShape.Class };
+        node.Features.AddRange(element.EnumeratedValues);
+
+        node.Features.AddRange(element.Children
+            .Where(c => c.Name is not null && (c.Kind is "attribute" || StructuralFeatures.Contains(c.Kind)) && !DrawnAsEdge(c, onDiagram, element))
+            .Select(AttributeLine));
+
+        foreach (var behaviour in element.Children.Where(c => c.Name is not null && (IsAction(c) || c.Kind == "calculation")))
+            node.Operations.Add(OperationLine(behaviour));
+
+        return node;
+    }
+
+    /// <summary>
+    /// UML sets an abstract name in italics, and the canvas's fonts have none,
+    /// so it also says so in the other way UML allows.
+    /// </summary>
+    private static string? Abstractly(Element element, string? stereotype)
+    {
+        if (!element.IsAbstract)
+            return stereotype;
+        return stereotype is null ? "{abstract}" : stereotype + " {abstract}";
+    }
+
+    /// <summary>A part definition is simply a class; the other definitions say what they are.</summary>
+    private static string? ClassStereotype(Element element) => element.Kind switch
+    {
+        "part def" => null,
+        "attribute def" => "«dataType»",
+        "enumeration def" => "«enumeration»",
+        "interface def" => "«interface»",
+        _ => $"«{element.Kind}»",
+    };
+
+    /// <summary>"+ capacity : Real [1] = 5000", with "«port»" where it is one.</summary>
+    private static string AttributeLine(Element feature)
+    {
+        var typing = feature.Relations.FirstOrDefault(r => r.Kind == RelationKind.Typing);
+        var keyword = feature.Kind is "attribute" ? string.Empty : $"«{feature.Kind}» ";
+        var conjugation = typing is { IsConjugated: true } ? "~" : string.Empty;
+        var type = typing is null ? string.Empty : $" : {conjugation}{typing.TargetReference.Trim()}";
+        var multiplicity = feature.Multiplicity is { Length: > 0 } m ? " " + m : string.Empty;
+        var value = feature.Value is { Length: > 0 } v ? " = " + v : string.Empty;
+        return $"{Glyph(feature)}{keyword}{feature.DisplayName}{type}{multiplicity}{value}";
+    }
+
+    /// <summary>"+ arm(in key : Key, out ok : Boolean)", its parameters being its directed features.</summary>
+    private static string OperationLine(Element action)
+    {
+        var typing = action.Relations.FirstOrDefault(r => r.Kind == RelationKind.Typing);
+        var signature = action.Children.Any(c => c.Direction is not null) ? action : typing?.Target ?? action;
+        var parameters = signature.Children.Where(c => c.Direction is not null).Select(p =>
+        {
+            var type = p.Relations.FirstOrDefault(r => r.Kind == RelationKind.Typing);
+            return type is null ? $"{p.Direction} {p.DisplayName}" : $"{p.Direction} {p.DisplayName} : {type.TargetReference.Trim()}";
+        });
+        return $"{Glyph(action)}{action.DisplayName}({string.Join(", ", parameters)})";
+    }
+
+    private static bool IsClassLike(Element element) => element.Name is not null && ClassKinds.Contains(element.Kind);
 
     /// <summary>
     /// What several views ask of the whole model, read once per model: who
