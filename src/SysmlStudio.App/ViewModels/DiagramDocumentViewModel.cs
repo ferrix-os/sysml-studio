@@ -49,10 +49,28 @@ public sealed partial class DiagramNodeViewModel(DiagramNode node) : ObservableO
 
     public string Maturity => _node.Maturity ?? "none";
 
-    public bool IsPseudo => _node.IsPseudo;
-    public bool IsBox => !_node.IsPseudo;
+    /// <summary>A start or done circle; the other nodes that stand for no element are drawn from marks.</summary>
+    public bool IsPseudo => _node.IsPseudo && !_node.IsDrawn;
+    public bool IsBox => !_node.IsPseudo && !_node.IsDrawn;
     public bool IsStart => _node.Pseudo == "start";
     public bool IsDone => _node.Pseudo == "done";
+
+    /// <summary>A UML shape other than a box.</summary>
+    public bool IsDrawn => _node.IsDrawn;
+
+    /// <summary>What to draw for a UML shape, for its size and place as they stand.</summary>
+    public IReadOnlyList<IMark> Marks => NodeMarks.For(_node);
+
+    /// <summary>A node's place on a time axis is what it says, and the frame around a diagram is not moved by itself.</summary>
+    public bool IsDraggable => !_node.IsFixed;
+
+    /// <summary>UML's actions and states have round corners, and their notation has no keyword over the name.</summary>
+    public CornerRadius Corners => _node.Notation == NodeNotation.Rounded ? new CornerRadius(12) : default;
+
+    public bool HasCaption => _node.Stereotype is not null;
+
+    /// <summary>What is drawn inside this one and has to move with it.</summary>
+    public List<DiagramNodeViewModel> Inside { get; } = [];
 
     /// <summary>Where a connection aims: the node's centre.</summary>
     public Point Anchor => new(Location.X + (Width / 2), Location.Y + (Height / 2));
@@ -60,12 +78,21 @@ public sealed partial class DiagramNodeViewModel(DiagramNode node) : ObservableO
     /// <summary>Half the node's size; connections are cut back by it so heads land on the border.</summary>
     public Size HalfSize => new(Width / 2, Height / 2);
 
-    partial void OnLocationChanged(Point value)
+    partial void OnLocationChanged(Point oldValue, Point newValue)
     {
-        _node.X = value.X;
-        _node.Y = value.Y;
+        _node.X = newValue.X;
+        _node.Y = newValue.Y;
         OnPropertyChanged(nameof(Anchor));
+
+        if (_syncing)
+            return;
+
+        foreach (var inside in Inside)
+            inside.Location += newValue - oldValue;
     }
+
+    /// <summary>While the layout hands out places, a container's move says nothing about what is in it.</summary>
+    private bool _syncing;
 
     /// <summary>The box as drawn, where it differs from the estimate the layout started from.</summary>
     public void Resize(double width, double height)
@@ -78,8 +105,20 @@ public sealed partial class DiagramNodeViewModel(DiagramNode node) : ObservableO
         OnPropertyChanged(nameof(Anchor));
     }
 
-    /// <summary>Takes the position the layout gave the node.</summary>
-    public void SyncFromLayout() => Location = new Point(_node.X, _node.Y);
+    /// <summary>Takes the position and the size the layout gave the node, and what it draws at them.</summary>
+    public void SyncFromLayout()
+    {
+        _syncing = true;
+        Location = new Point(_node.X, _node.Y);
+        _syncing = false;
+
+        OnPropertyChanged(nameof(Width));
+        OnPropertyChanged(nameof(Height));
+        OnPropertyChanged(nameof(HalfSize));
+        OnPropertyChanged(nameof(Anchor));
+        if (_node.IsDrawn)
+            OnPropertyChanged(nameof(Marks));
+    }
 
     /// <summary>The box's outline, for cutting a straight line back to its border.</summary>
     public Rect Bounds => new(Location.X, Location.Y, Width, Height);
@@ -109,6 +148,9 @@ public sealed class DiagramConnectionViewModel : ObservableObject, IDisposable
     public string? Label => _edge.Label;
     public bool HasLabel => !string.IsNullOrWhiteSpace(_edge.Label);
 
+    /// <summary>A message's text, a guard, a trigger: there the label is the diagram's content and not a note on an arrow.</summary>
+    public bool SaysWhatHappens => _edge.Notation != EdgeNotation.ByKind || Kind is RelationKind.Transition or RelationKind.Succession;
+
     /// <summary>Whether the label is drawn; the diagram turns labels off when it is crowded.</summary>
     public bool ShowsLabel { get; set; }
 
@@ -129,14 +171,19 @@ public sealed class DiagramConnectionViewModel : ObservableObject, IDisposable
     /// <summary>Composition is marked with a filled diamond at the owner's end.</summary>
     public bool IsComposition => Kind == RelationKind.Composition;
 
-    /// <summary>An open arrowhead: the trace relations.</summary>
-    public bool IsOpenHead => IsDashed;
+    /// <summary>An open arrowhead: the trace relations, a control flow, a transition, a message nobody waits for.</summary>
+    public bool IsOpenHead => IsDashed || _edge.HasOpenHead;
 
     /// <summary>A filled arrowhead: everything else.</summary>
     public bool IsFilledHead => !IsGeneralization && !IsOpenHead;
 
     /// <summary>A connection joins two ends as equals: no arrowhead, a small circle at each end instead.</summary>
-    public bool IsConnector => Kind is RelationKind.Connect or RelationKind.Interface;
+    public bool IsConnector => Kind is RelationKind.Connect or RelationKind.Interface && !IsAssociation;
+
+    /// <summary>A plain line, with nothing at either end.</summary>
+    private bool IsAssociation => _edge.Notation == EdgeNotation.Association;
+
+    private bool IsMessage => _edge.Notation is EdgeNotation.AsyncMessage or EdgeNotation.SyncMessage;
 
     /// <summary>The points the line passes through, in canvas coordinates.</summary>
     private IReadOnlyList<Point> Points
@@ -148,6 +195,16 @@ public sealed class DiagramConnectionViewModel : ObservableObject, IDisposable
 
             var from = Source.Anchor;
             var to = Target.Anchor;
+
+            // A message keeps its row while a lifeline is dragged sideways: its row is when it happens.
+            if (IsMessage && _edge.Waypoints.Count >= 2)
+            {
+                var (top, bottom) = (_edge.Waypoints[0].Y, _edge.Waypoints[^1].Y);
+                return ReferenceEquals(Source, Target)
+                    ? [new Point(from.X, top), new Point(from.X + 34, top), new Point(from.X + 34, bottom), new Point(from.X, bottom)]
+                    : [new Point(from.X, top), new Point(to.X, top)];
+            }
+
             return [Clip(Source.Bounds, to, from), Clip(Target.Bounds, from, to)];
         }
     }
@@ -172,7 +229,7 @@ public sealed class DiagramConnectionViewModel : ObservableObject, IDisposable
     {
         get
         {
-            if (IsConnector)
+            if (IsConnector || IsAssociation)
                 return null;
 
             var points = Points;
@@ -240,9 +297,10 @@ public sealed class DiagramConnectionViewModel : ObservableObject, IDisposable
     {
         get
         {
-            var width = ((_edge.Label?.Length ?? 0) * 6.7) + 8;
+            var lines = (_edge.Label ?? string.Empty).Split('\n');
+            var width = (lines.Max(l => l.Length) * 6.7) + 8;
             if (_routeIsCurrent && _edge.LabelCentre is { } centre)
-                return new Point(centre.X - (width / 2), centre.Y - 8);
+                return new Point(centre.X - (width / 2), centre.Y - (lines.Length * 8));
 
             var points = Points;
             var middle = points[points.Count / 2];
@@ -259,6 +317,7 @@ public sealed class DiagramConnectionViewModel : ObservableObject, IDisposable
 
     public void Refresh()
     {
+        OnPropertyChanged(nameof(Label));
         OnPropertyChanged(nameof(Line));
         OnPropertyChanged(nameof(Head));
         OnPropertyChanged(nameof(Tail));
@@ -332,6 +391,9 @@ public sealed partial class DiagramDocumentViewModel : DocumentViewModel
         for (var i = 0; i < diagram.Nodes.Count; i++)
             byNode[diagram.Nodes[i]] = nodes[i];
 
+        foreach (var inner in diagram.Nodes.Where(n => n.Container is not null))
+            byNode[inner.Container!].Inside.Add(byNode[inner]);
+
         Connections = new ObservableCollection<DiagramConnectionViewModel>(
             diagram.Edges.ConvertAll(e => new DiagramConnectionViewModel(e, byNode[e.Source], byNode[e.Target])));
 
@@ -365,6 +427,8 @@ public sealed partial class DiagramDocumentViewModel : DocumentViewModel
     {
         PushPositions();
         DiagramLayout.Route(Diagram);
+        foreach (var node in Nodes)
+            node.SyncFromLayout();
         foreach (var connection in Connections)
             connection.Rerouted();
     }
@@ -387,7 +451,7 @@ public sealed partial class DiagramDocumentViewModel : DocumentViewModel
         var changed = false;
         foreach (var (node, size) in sizes)
         {
-            if (node.IsPseudoNode || (Math.Abs(size.Height - node.Height) < 3 && Math.Abs(size.Width - node.Width) < 3))
+            if (node.IsPseudoNode || node.IsDrawn || (Math.Abs(size.Height - node.Height) < 3 && Math.Abs(size.Width - node.Width) < 3))
                 continue;
             node.Resize(Math.Max(size.Width, node.Width), Math.Max(size.Height, node.Height));
             changed = true;
@@ -463,7 +527,8 @@ public sealed partial class DiagramDocumentViewModel : DocumentViewModel
     /// <summary>Copies wherever the nodes were dragged to back into the diagram.</summary>
     public void PushPositions()
     {
-        foreach (var node in Nodes)
+        // A pseudo node stands on its scope's element, which may be on the diagram too.
+        foreach (var node in Nodes.Where(n => !n.IsPseudoNode))
         {
             if (Diagram.NodeFor(node.Element) is { } target)
             {

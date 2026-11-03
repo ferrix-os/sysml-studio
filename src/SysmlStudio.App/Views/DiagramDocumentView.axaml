@@ -79,6 +79,7 @@
                       x:DataType="vm:DiagramNodeViewModel">
           <Setter Property="Location" Value="{Binding Location, Mode=TwoWay}" />
           <Setter Property="IsSelected" Value="{Binding IsSelected, Mode=TwoWay}" />
+          <Setter Property="IsDraggable" Value="{Binding IsDraggable}" />
           <Setter Property="BorderBrush" Value="Transparent" />
           <Setter Property="BorderThickness" Value="0" />
           <Setter Property="HighlightBrush" Value="Transparent" />
@@ -96,12 +97,16 @@
               <Ellipse Width="24" Height="24" Stroke="{DynamicResource TextMutedBrush}" StrokeThickness="1.5" IsVisible="{Binding IsDone}" />
               <Ellipse Width="12" Height="12" Fill="{DynamicResource TextMutedBrush}" IsVisible="{Binding IsDone}" />
             </Panel>
+            <!-- Every other UML shape is drawn from the marks the SVG export writes too. -->
+            <views:MarkCanvas Width="{Binding Width}" Height="{Binding Height}" IsVisible="{Binding IsDrawn}" Marks="{Binding Marks}" />
             <Border Width="{Binding Width}" MinHeight="{Binding Height}" IsVisible="{Binding IsBox}"
                     Background="{DynamicResource SurfaceRaisedBrush}"
-                    BorderBrush="{DynamicResource BorderStrongBrush}" BorderThickness="1">
+                    BorderBrush="{DynamicResource BorderStrongBrush}" BorderThickness="1"
+                    CornerRadius="{Binding Corners}">
               <StackPanel>
                 <StackPanel Margin="14,11,14,12" Spacing="3">
-                  <TextBlock Text="{Binding KindCaption}" Classes="faint" FontSize="12" TextTrimming="CharacterEllipsis" />
+                  <TextBlock Text="{Binding KindCaption}" Classes="faint" FontSize="12" TextTrimming="CharacterEllipsis"
+                             IsVisible="{Binding HasCaption}" />
                   <TextBlock Text="{Binding Title}" FontSize="16" TextTrimming="CharacterEllipsis" />
                   <TextBlock Text="{Binding Documentation}" Classes="muted" FontSize="13.5" TextWrapping="Wrap"
                              LineHeight="20" MaxHeight="80" TextTrimming="CharacterEllipsis" Margin="0,3,0,0"
@@ -138,7 +143,7 @@
             <Canvas IsVisible="{Binding ShowsLabel}" IsHitTestVisible="False">
               <Border Canvas.Left="{Binding LabelLocation.X}" Canvas.Top="{Binding LabelLocation.Y}"
                       Background="{DynamicResource CanvasBrush}" Padding="3,0">
-                <TextBlock Text="{Binding Label}" Classes="faint" FontSize="12" />
+                <TextBlock Text="{Binding Label}" Classes.faint="{Binding !SaysWhatHappens}" Classes.muted="{Binding SaysWhatHappens}" FontSize="12" />
               </Border>
             </Canvas>
           </Panel>
