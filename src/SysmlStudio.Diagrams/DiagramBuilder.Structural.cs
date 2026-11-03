@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using System.Text.RegularExpressions;
 using SysmlStudio.Model;
 
 namespace SysmlStudio.Diagrams;
@@ -49,6 +50,8 @@ public static partial class DiagramBuilder
                 kinds.Add(DiagramKind.Component);
             if (index.Allocations.Exists(a => a.TouchesPackage(element)))
                 kinds.Add(DiagramKind.Deployment);
+            if (StereotypesOf(element, index).Count > 0)
+                kinds.Add(DiagramKind.Profile);
             return kinds;
         }
 
@@ -62,6 +65,8 @@ public static partial class DiagramBuilder
             kinds.Add(DiagramKind.CompositeStructure);
         if (index.Allocations.Exists(a => a.Touches(element)))
             kinds.Add(DiagramKind.Deployment);
+        if (element.Kind == "metadata def")
+            kinds.Add(DiagramKind.Profile);
         return kinds;
     }
 
@@ -617,6 +622,113 @@ public static partial class DiagramBuilder
     {
         var typing = element.Relations.FirstOrDefault(r => r.Kind == RelationKind.Typing);
         return typing is null ? element.DisplayName : $"{element.DisplayName} : {typing.TargetReference.Trim()}{element.Multiplicity}";
+    }
+
+    // ----- profile ------------------------------------------------------------
+
+    /// <summary>
+    /// Metadata definitions as stereotypes, with their attributes and what they
+    /// specialize, and the metaclasses they extend: what the definition says it
+    /// annotates, and what it is found on in the text, with how often.
+    /// </summary>
+    private static Diagram ProfileDiagram(Element root)
+    {
+        var diagram = new Diagram(DiagramKind.Profile, root);
+        var index = IndexOf(root);
+        if (IsPackage(root))
+            diagram.FrameLabel = $"«profile» {root.DisplayName}";
+
+        var stereotypes = root.Kind == "metadata def" ? [root] : StereotypesOf(root, index);
+        foreach (var stereotype in stereotypes)
+        {
+            var node = new DiagramNode(stereotype, stereotype.DisplayName, "«stereotype»") { Shape = NodeShape.Class };
+            node.Features.AddRange(stereotype.Children
+                .Where(c => c.Name is not null && c.Kind is "attribute" or "ref" or "item" or "part")
+                .Select(AttributeLine));
+            diagram.Nodes.Add(node);
+        }
+
+        foreach (var stereotype in stereotypes)
+        {
+            foreach (var relation in stereotype.Relations.Where(r => r.Kind == RelationKind.Specialization))
+                Connect(diagram, stereotype, relation.Target, RelationKind.Specialization);
+
+            // Across the model when the definition is in view, or else only inside the package drawn.
+            var scope = Contains(root, stereotype) ? null : root;
+            var uses = index.Applications
+                .Where(a => ReferenceEquals(a.Definition, stereotype) && (scope is null || Contains(scope, a.Target)))
+                .GroupBy(a => Metaclass(a.Target))
+                .ToDictionary(g => g.Key, g => g.Count(), StringComparer.Ordinal);
+
+            foreach (var (Name, Count) in DeclaredMetaclasses(stereotype).Except(uses.Keys, StringComparer.Ordinal).Select(m => (Name: m, Count: 0))
+                         .Concat(uses.Select(u => (Name: u.Key, Count: u.Value)))
+                         .OrderBy(m => m.Name, StringComparer.Ordinal))
+            {
+                var label = Count switch
+                {
+                    0 => null,
+                    1 => "1 use",
+                    var n => $"{n} uses",
+                };
+                diagram.Edges.Add(new DiagramEdge(diagram.NodeFor(stereotype)!, MetaclassNode(diagram, root, Name), RelationKind.Extension, label));
+            }
+        }
+
+        return diagram;
+    }
+
+    /// <summary>A metaclass is part of SysML, not of the model, so its box stands on the diagram's root.</summary>
+    private static DiagramNode MetaclassNode(Diagram diagram, Element root, string metaclass)
+    {
+        var pseudo = "metaclass:" + metaclass;
+        if (diagram.PseudoNode(pseudo) is { } existing)
+            return existing;
+
+        var node = new DiagramNode(root, metaclass, "«metaclass»", pseudo) { Shape = NodeShape.Class };
+        diagram.Nodes.Add(node);
+        return node;
+    }
+
+    /// <summary>The metadata definitions a package holds, and the ones used inside it.</summary>
+    private static List<Element> StereotypesOf(Element root, StructuralIndex index)
+    {
+        var held = root.Descendants().Where(e => e.Kind == "metadata def" && e.Name is not null);
+        var used = index.Applications.Where(a => Contains(root, a.Target)).Select(a => a.Definition);
+        return [.. held.Concat(used).Distinct()];
+    }
+
+    /// <summary>What a metadata definition says it annotates: ":> annotatedElement : SysML::PartDefinition", or a "baseType".</summary>
+    private static IEnumerable<string> DeclaredMetaclasses(Element stereotype)
+    {
+        foreach (var feature in stereotype.Children)
+        {
+            var named = feature.Relations.Any(r => r.Kind is RelationKind.Specialization or RelationKind.Redefinition
+                && r.TargetReference.Trim() is "annotatedElement" or "baseType");
+            if (!named)
+                continue;
+
+            if (feature.Relations.FirstOrDefault(r => r.Kind == RelationKind.Typing) is { } typing)
+                yield return typing.TargetReference.Trim().Split("::")[^1];
+            else if (feature.Value is { } value && MetaOperand().Match(value) is { Success: true } match)
+                yield return match.Groups[1].Value;
+        }
+    }
+
+    [GeneratedRegex(@"meta\s+(?:[\w']+::)*([\w']+)", RegexOptions.CultureInvariant, matchTimeoutMilliseconds: 500)]
+    private static partial Regex MetaOperand();
+
+    /// <summary>What the abstract syntax calls an element's kind: "part def" is PartDefinition, "part" is PartUsage.</summary>
+    private static string Metaclass(Element element)
+    {
+        if (element.Kind is "package" or "dependency" or "namespace")
+            return char.ToUpperInvariant(element.Kind[0]) + element.Kind[1..];
+        if (element.Kind == "library package")
+            return "LibraryPackage";
+
+        var isDefinition = element.IsDefinition;
+        var stem = isDefinition ? element.Kind[..^" def".Length] : element.Kind;
+        var words = stem.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(w => char.ToUpperInvariant(w[0]) + w[1..]);
+        return string.Concat(words) + (isDefinition ? "Definition" : "Usage");
     }
 
     private static bool IsClassLike(Element element) => element.Name is not null && ClassKinds.Contains(element.Kind);

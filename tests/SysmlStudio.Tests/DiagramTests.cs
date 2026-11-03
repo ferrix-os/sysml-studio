@@ -428,6 +428,31 @@ public sealed class DiagramTests
         Assert.DoesNotContain(DiagramKind.Deployment, DiagramBuilder.KindsFor(workspace.Find("Helpers")!));
     }
 
+    [Fact]
+    public void AProfileDiagramDrawsStereotypesAndWhatTheyExtend()
+    {
+        var diagram = GarageDiagram(DiagramKind.Profile, "Garage");
+        var safety = diagram.Nodes.Single(n => n.Label == "Safety");
+
+        Assert.Equal("«stereotype»", safety.Stereotype);
+        Assert.Contains("+ level : Integer", safety.Features);
+        Assert.Equal("«profile» Garage", diagram.FrameLabel);
+
+        // What it says it annotates, what it is written on, and how often.
+        Assert.Contains(diagram.Edges, e => e.Kind == RelationKind.Extension && e.Source == safety && e.Target.Label == "ItemDefinition" && e.Label is null);
+        Assert.Contains(diagram.Edges, e => e.Kind == RelationKind.Extension && e.Source == safety && e.Target.Label == "PartDefinition" && e.Label == "2 uses");
+        Assert.Equal("«metaclass»", diagram.Edges.First(e => e.Source == safety).Target.Stereotype);
+        Assert.True(diagram.Edges.First(e => e.Source == safety).Target.IsPseudo);
+    }
+
+    [Fact]
+    public void WhatHasNoStereotypeHasNoProfileDiagram()
+    {
+        var workspace = Garage();
+        Assert.DoesNotContain(DiagramKind.Profile, DiagramBuilder.KindsFor(workspace.Find("Parts")!));
+        Assert.Contains(DiagramKind.Profile, DiagramBuilder.KindsFor(workspace.Find("Garage::Safety")!));
+    }
+
     [Theory]
     [InlineData(DiagramKind.Package, "Garage")]
     [InlineData(DiagramKind.Class, "Garage")]
@@ -435,6 +460,7 @@ public sealed class DiagramTests
     [InlineData(DiagramKind.Component, "Garage")]
     [InlineData(DiagramKind.CompositeStructure, "Garage::Workshop")]
     [InlineData(DiagramKind.Deployment, "Garage")]
+    [InlineData(DiagramKind.Profile, "Garage")]
     public void EveryKindLaysOutWithNoOverlapAndNoEdgeThroughABox(DiagramKind kind, string root)
     {
         var diagram = GarageDiagram(kind, root);
@@ -473,6 +499,8 @@ public sealed class DiagramTests
     [InlineData(DiagramKind.CompositeStructure, "Garage::Workshop", ">Workshop</text>")]
     [InlineData(DiagramKind.Deployment, "Garage", "«deploy»")]
     [InlineData(DiagramKind.Deployment, "Garage", "«node»")]
+    [InlineData(DiagramKind.Profile, "Garage", "url(#extension)")]
+    [InlineData(DiagramKind.Profile, "Garage", "«metaclass»")]
     public void TheSvgSaysWhatTheCanvasSays(DiagramKind kind, string root, string expected)
     {
         var diagram = GarageDiagram(kind, root);
@@ -525,6 +553,7 @@ public sealed class DiagramTests
     [InlineData(DiagramKind.Component, "DroneStructure")]
     [InlineData(DiagramKind.CompositeStructure, "DroneStructure::Drone")]
     [InlineData(DiagramKind.Deployment, "DroneSoftware")]
+    [InlineData(DiagramKind.Profile, "DroneLifecycle")]
     public void TheDroneSampleHasSomethingForEveryStructuralKind(DiagramKind kind, string root)
     {
         var element = SysmlWorkspace.Load(Path.Combine(AppContext.BaseDirectory, "Samples", "drone")).Find(root)!;
