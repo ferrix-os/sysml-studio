@@ -56,6 +56,8 @@ public static partial class DiagramBuilder
             kinds.Add(DiagramKind.ObjectDiagram);
         if (IsComponent(element) || ComponentsInside(element).Count > 0)
             kinds.Add(DiagramKind.Component);
+        if ((element.IsDefinition || IsTypedUsage(element)) && element.Children.Any(IsInternalPart))
+            kinds.Add(DiagramKind.CompositeStructure);
         return kinds;
     }
 
@@ -512,6 +514,47 @@ public static partial class DiagramBuilder
             _ => PortFlow.None,
         };
     }
+
+    // ----- composite structure ------------------------------------------------
+
+    /// <summary>
+    /// What <see cref="Interconnection"/> draws, in UML's notation: the parts
+    /// in a frame that names the definition, each with the ports its type gives
+    /// it on its border, and the connectors joined to those ports.
+    /// </summary>
+    private static Diagram CompositeStructure(Element root)
+    {
+        var ends = new Dictionary<DiagramEdge, Relation>();
+        var plain = InternalStructure(DiagramKind.CompositeStructure, root, (edge, relation) => ends[edge] = relation);
+
+        var diagram = new Diagram(DiagramKind.CompositeStructure, root) { FrameLabel = root.DisplayName };
+        var nodes = new Dictionary<DiagramNode, DiagramNode>();
+        foreach (var node in plain.Nodes)
+        {
+            // The definition's own ports are boxes too: a flat layout has no border of the frame to put them on.
+            var stereotype = node.Element.Kind == "port" ? "«port»" : null;
+            var part = new DiagramNode(node.Element, node.Label, stereotype) { Shape = NodeShape.Class, IsReference = node.Element.Kind == "ref" };
+            part.Ports.AddRange(PortsOf(node.Element).Select(PortOn));
+            nodes[node] = part;
+            diagram.Nodes.Add(part);
+        }
+
+        foreach (var edge in plain.Edges)
+        {
+            var relation = ends[edge];
+            AddPortEdge(diagram, nodes[edge.Source], PortNamed(relation.OriginReference), nodes[edge.Target], PortNamed(relation.TargetReference), edge.Kind, edge.Label);
+        }
+
+        return diagram;
+
+        static string? PortNamed(string? reference)
+        {
+            var chain = reference?.Trim().Split('.');
+            return chain is { Length: > 1 } ? chain[1].Trim().Trim('\'') : null;
+        }
+    }
+
+    private static bool IsInternalPart(Element element) => element.Kind is "part" or "item" or "occurrence" or "ref" && element.Name is not null;
 
     private static bool IsClassLike(Element element) => element.Name is not null && ClassKinds.Contains(element.Kind);
 

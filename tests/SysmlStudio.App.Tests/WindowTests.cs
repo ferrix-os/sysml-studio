@@ -333,6 +333,7 @@ public sealed class WindowTests
                      (DiagramKind.Class, "FerrixStructure::Kernel"),
                      (DiagramKind.Component, "FerrixStructure"),
                      (DiagramKind.Component, "FerrixStructure::Kernel"),
+                     (DiagramKind.CompositeStructure, "FerrixStructure::Ferrix"),
                  })
         {
             if (shell.Workspace!.Find(name) is not { } element)
@@ -457,6 +458,7 @@ public sealed class WindowTests
                      (DiagramKind.Class, "Garage"),
                      (DiagramKind.ObjectDiagram, "Garage"),
                      (DiagramKind.Component, "Garage"),
+                     (DiagramKind.CompositeStructure, "Garage::Workshop"),
                  })
         {
             shell.Select(workspace.Find(root)!);
@@ -468,6 +470,33 @@ public sealed class WindowTests
             Assert.NotEmpty(Assert.IsType<DiagramDocumentViewModel>(shell.ActiveDocument).Nodes);
             Shoot(window, $"diagram-{kind}");
         }
+    }
+
+    /// <summary>Dragging a box in a framed diagram moves the frame with it, and the drop lands the connectors on their ports again.</summary>
+    [AvaloniaFact]
+    public void TheFrameAndThePortsFollowADrag()
+    {
+        var (_, shell) = Open(Path.Combine(AppContext.BaseDirectory, "UmlFixtures"));
+        shell.Select(shell.Workspace!.Find("Garage::Workshop")!);
+        shell.OpenDiagramCommand.Execute(DiagramKind.CompositeStructure);
+        Settle();
+
+        var diagram = Assert.IsType<DiagramDocumentViewModel>(shell.ActiveDocument);
+        var frame = Assert.Single(diagram.Frames);
+        Assert.Equal("Workshop", frame.Label);
+        var before = frame.Size.Width;
+
+        var socket = diagram.Nodes.Single(n => n.Element.Name == "socket");
+        socket.Location += new Vector(600, 0);
+        Assert.True(frame.Size.Width > before, "the frame grew to hold the box dragged out of it");
+
+        // Zoomed out, it is still drawn around the boxes, not at its own size.
+        diagram.Zoom = 0.5;
+        Assert.Equal(frame.Size.Width * 0.5, frame.Width, 3);
+
+        diagram.DragCompletedCommand.Execute(null);
+        var edge = Assert.Single(diagram.Diagram.Edges, e => e.SourcePort is not null);
+        Assert.Equal(edge.Source.X + edge.SourcePort!.X, edge.Waypoints[0].X, 3);
     }
 
     /// <summary>The structural UML kinds over the sample model the screenshots use, in both themes.</summary>
@@ -487,6 +516,7 @@ public sealed class WindowTests
                          (DiagramKind.ObjectDiagram, "DroneFleet"),
                          (DiagramKind.Component, "DroneStructure"),
                          (DiagramKind.Component, "DroneStructure::Drone"),
+                         (DiagramKind.CompositeStructure, "DroneStructure::Drone"),
                      })
             {
                 shell.Select(shell.Workspace!.Find(root)!);

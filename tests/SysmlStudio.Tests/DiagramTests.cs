@@ -364,11 +364,48 @@ public sealed class DiagramTests
         Assert.True(spare.Y == 0 || Math.Abs(spare.Y - socket.Height) < 0.01, "on the top or bottom border");
     }
 
+    [Fact]
+    public void ACompositeStructureIsTheInterconnectionInUmlsNotation()
+    {
+        var workspace = Garage();
+        var plain = DiagramBuilder.Build(DiagramKind.Interconnection, workspace.Find("Garage::Workshop")!);
+        var diagram = DiagramBuilder.Build(DiagramKind.CompositeStructure, workspace.Find("Garage::Workshop")!);
+
+        // The same parts and connectors the interconnection diagram finds...
+        Assert.Equal(plain.Nodes.Select(n => n.Label), diagram.Nodes.Select(n => n.Label));
+        Assert.Equal(plain.Edges.Count, diagram.Edges.Count);
+
+        // ...in a frame, with a dashed reference and the connector on its ports.
+        Assert.Equal("Workshop", diagram.FrameLabel);
+        Assert.True(diagram.Nodes.Single(n => n.Label == "boss : Mechanic").IsReference);
+        Assert.False(diagram.Nodes.Single(n => n.Label == "lift : Lift").IsReference);
+        Assert.Equal("«port»", diagram.Nodes.Single(n => n.Label == "door : Mains").Stereotype);
+        var edge = Assert.Single(diagram.Edges);
+        Assert.Equal("out1", edge.SourcePort?.Name);
+        Assert.Equal("supply", edge.TargetPort?.Name);
+    }
+
+    [Fact]
+    public void ConnectorsEndOnThePortsTheyName()
+    {
+        var diagram = GarageDiagram(DiagramKind.CompositeStructure, "Garage::Workshop");
+        DiagramLayout.Apply(diagram);
+
+        var edge = Assert.Single(diagram.Edges);
+        var (x, y) = edge.Waypoints[0];
+        Assert.Equal(edge.Source.X + edge.SourcePort!.X, x, 3);
+        Assert.Equal(edge.Source.Y + edge.SourcePort.Y, y, 0.01 + 5);
+        (x, y) = edge.Waypoints[^1];
+        Assert.Equal(edge.Target.X + edge.TargetPort!.X, x, 3);
+        Assert.Equal(edge.Target.Y + edge.TargetPort.Y, y, 0.01 + 5);
+    }
+
     [Theory]
     [InlineData(DiagramKind.Package, "Garage")]
     [InlineData(DiagramKind.Class, "Garage")]
     [InlineData(DiagramKind.ObjectDiagram, "Garage")]
     [InlineData(DiagramKind.Component, "Garage")]
+    [InlineData(DiagramKind.CompositeStructure, "Garage::Workshop")]
     public void EveryKindLaysOutWithNoOverlapAndNoEdgeThroughABox(DiagramKind kind, string root)
     {
         var diagram = GarageDiagram(kind, root);
@@ -403,6 +440,8 @@ public sealed class DiagramTests
     [InlineData(DiagramKind.ObjectDiagram, "Garage", "text-decoration=\"underline\"")]
     [InlineData(DiagramKind.Component, "Garage", "«component»")]
     [InlineData(DiagramKind.Component, "Garage", "<circle")]
+    [InlineData(DiagramKind.CompositeStructure, "Garage::Workshop", "stroke-dasharray=\"4 3\"")]
+    [InlineData(DiagramKind.CompositeStructure, "Garage::Workshop", ">Workshop</text>")]
     public void TheSvgSaysWhatTheCanvasSays(DiagramKind kind, string root, string expected)
     {
         var diagram = GarageDiagram(kind, root);
@@ -411,6 +450,29 @@ public sealed class DiagramTests
         var svg = SvgExporter.ToSvg(diagram);
         Assert.Contains(expected, svg, StringComparison.Ordinal);
         _ = System.Xml.Linq.XDocument.Parse(svg); // and it is well formed
+    }
+
+    /// <summary>A connector ends on the port's square, where a head would hide the socket.</summary>
+    [Fact]
+    public void AConnectorInTheSvgHasNoHead()
+    {
+        var diagram = GarageDiagram(DiagramKind.CompositeStructure, "Garage::Workshop");
+        DiagramLayout.Apply(diagram);
+
+        var connector = SvgExporter.ToSvg(diagram).Split('\n').Single(l => l.Contains(">feed<", StringComparison.Ordinal));
+        Assert.DoesNotContain("marker-end", connector, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TheFramedSvgHoldsTheWholeFrame()
+    {
+        var diagram = GarageDiagram(DiagramKind.CompositeStructure, "Garage::Workshop");
+        DiagramLayout.Apply(diagram);
+
+        var svg = System.Xml.Linq.XDocument.Parse(SvgExporter.ToSvg(diagram)).Root!;
+        var (_, _, width, height) = diagram.FrameBounds()!.Value;
+        Assert.True(double.Parse(svg.Attribute("width")!.Value, System.Globalization.CultureInfo.InvariantCulture) >= width);
+        Assert.True(double.Parse(svg.Attribute("height")!.Value, System.Globalization.CultureInfo.InvariantCulture) >= height);
     }
 
     [Theory]
@@ -430,6 +492,7 @@ public sealed class DiagramTests
     [InlineData(DiagramKind.Class, "DroneStructure")]
     [InlineData(DiagramKind.ObjectDiagram, "DroneFleet")]
     [InlineData(DiagramKind.Component, "DroneStructure")]
+    [InlineData(DiagramKind.CompositeStructure, "DroneStructure::Drone")]
     public void TheDroneSampleHasSomethingForEveryStructuralKind(DiagramKind kind, string root)
     {
         var element = SysmlWorkspace.Load(Path.Combine(AppContext.BaseDirectory, "Samples", "drone")).Find(root)!;

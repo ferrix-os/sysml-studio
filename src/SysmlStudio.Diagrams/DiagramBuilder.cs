@@ -83,6 +83,7 @@ public static partial class DiagramBuilder
         DiagramKind.Class => ClassDiagram(root),
         DiagramKind.ObjectDiagram => ObjectDiagram(root),
         DiagramKind.Component => ComponentDiagram(root),
+        DiagramKind.CompositeStructure => CompositeStructure(root),
         _ => throw new ArgumentOutOfRangeException(nameof(kind)),
     };
 
@@ -177,9 +178,15 @@ public static partial class DiagramBuilder
     // ----- interconnection ----------------------------------------------------
 
     /// <summary>The parts and ports inside one definition, with the connections between them.</summary>
-    private static Diagram Interconnection(Element root)
+    private static Diagram Interconnection(Element root) => InternalStructure(DiagramKind.Interconnection, root);
+
+    /// <summary>
+    /// The parts and connectors inside one definition, which two kinds of
+    /// diagram draw; <paramref name="connected"/> is told which relation each edge came from.
+    /// </summary>
+    private static Diagram InternalStructure(DiagramKind kind, Element root, Action<DiagramEdge, Relation>? connected = null)
     {
-        var diagram = new Diagram(DiagramKind.Interconnection, root);
+        var diagram = new Diagram(kind, root);
         foreach (var child in root.Children.Where(IsStructural))
         {
             var typing = child.Relations.FirstOrDefault(r => r.Kind == RelationKind.Typing);
@@ -195,8 +202,12 @@ public static partial class DiagramBuilder
             {
                 var source = FindEnd(diagram, relation.OriginReference);
                 var target = FindEnd(diagram, relation.TargetReference);
-                if (source is not null && target is not null && !ReferenceEquals(source, target))
-                    diagram.Edges.Add(new DiagramEdge(source, target, relation.Kind, connector.Name));
+                if (source is null || target is null || ReferenceEquals(source, target))
+                    continue;
+
+                var edge = new DiagramEdge(source, target, relation.Kind, connector.Name);
+                diagram.Edges.Add(edge);
+                connected?.Invoke(edge, relation);
             }
         }
 
