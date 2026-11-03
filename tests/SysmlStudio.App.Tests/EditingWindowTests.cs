@@ -136,6 +136,50 @@ public sealed class EditingWindowTests : IDisposable
         Assert.Equal(2, redrawn.Connections.Count);
     }
 
+    /// <summary>The structural views that can be drawn on write to the text like the others, and follow it.</summary>
+    [AvaloniaFact]
+    public void TheStructuralViewsDrawRelationsAndFollowARename()
+    {
+        File.Delete(SamplePath);
+        File.Copy(Path.Combine(AppContext.BaseDirectory, "UmlFixtures", "garage.sysml"), Path.Combine(_folder, "garage.sysml"));
+        var (_, shell) = Open();
+
+        shell.Select(shell.Workspace!.Find("Garage")!);
+        shell.OpenDiagramCommand.Execute(DiagramKind.Deployment);
+        Settle();
+        var deployment = Assert.IsType<DiagramDocumentViewModel>(shell.ActiveDocument);
+        var before = deployment.Connections.Count;
+        Assert.Equal("Allocate", Assert.Single(deployment.Toolbox).Relation);
+
+        shell.StartRelationCommand.Execute("Allocate");
+        deployment.Nodes.Single(n => n.Element.Name == "Jack").IsSelected = true;
+        deployment.Nodes.Single(n => n.Element.Name == "Arm").IsSelected = true;
+        Settle();
+        Assert.Contains("to Arm;", shell.Workspace!.Files.Single().Text, StringComparison.Ordinal);
+        Assert.Equal(before + 1, Assert.IsType<DiagramDocumentViewModel>(shell.ActiveDocument).Connections.Count);
+
+        shell.Select(shell.Workspace!.Find("Garage::Workshop")!);
+        shell.OpenDiagramCommand.Execute(DiagramKind.CompositeStructure);
+        Settle();
+        var composite = Assert.IsType<DiagramDocumentViewModel>(shell.ActiveDocument);
+        shell.StartRelationCommand.Execute("Connect");
+        composite.Nodes.Single(n => n.Element.Name == "socket").IsSelected = true;
+        composite.Nodes.Single(n => n.Element.Name == "boss").IsSelected = true;
+        Settle();
+        Assert.Contains("connect socket to boss;", shell.Workspace!.Files.Single().Text, StringComparison.Ordinal);
+        Assert.Equal(2, Assert.IsType<DiagramDocumentViewModel>(shell.ActiveDocument).Connections.Count);
+
+        // A conjugated typing is a reference like any other.
+        shell.RenameCommand.Execute(shell.Workspace!.Find("Garage::Mains"));
+        Settle();
+        var rename = Assert.IsType<DialogViewModel>(shell.Dialog);
+        rename.Name = "Grid";
+        rename.ConfirmCommand.Execute(null);
+        Settle();
+        Assert.Contains("port supply : ~Grid;", shell.Workspace!.Files.Single().Text, StringComparison.Ordinal);
+        Assert.Equal(DiagramKind.CompositeStructure, shell.ActiveKind);
+    }
+
     [AvaloniaFact]
     public void DeleteAsksFirstAndSaysWhatWillBreak()
     {

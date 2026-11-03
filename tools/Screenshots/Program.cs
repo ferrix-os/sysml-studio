@@ -60,6 +60,24 @@ Shoot("state", shell =>
     shell.OpenDiagramCommand.Execute(DiagramKind.StateMachine);
 });
 
+foreach (var (name, kind, root) in new[]
+         {
+             ("package", DiagramKind.Package, "DroneSoftware"),
+             ("class", DiagramKind.Class, "DroneStructure"),
+             ("object", DiagramKind.ObjectDiagram, "DroneFleet"),
+             ("component", DiagramKind.Component, "DroneStructure::Drone"),
+             ("composite", DiagramKind.CompositeStructure, "DroneStructure::Drone"),
+             ("deployment", DiagramKind.Deployment, "DroneSoftware"),
+             ("profile", DiagramKind.Profile, "DroneLifecycle"),
+         })
+{
+    Shoot(name, shell =>
+    {
+        shell.Select(Find(shell, root));
+        shell.OpenDiagramCommand.Execute(kind);
+    });
+}
+
 Shoot("rename", shell =>
 {
     shell.Select(Find(shell, "DroneStructure"));

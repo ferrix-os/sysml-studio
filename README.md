@@ -63,8 +63,10 @@ they open it.
 ## Diagrams
 
 Select an element and the switcher in the title bar offers the diagrams it can
-be drawn as. Boxes are laid out automatically, kept apart, with edges routed
-around them; drag anything where you want it.
+be drawn as: its text, or a kind from the list, which keeps the kinds in groups
+and greys out the ones with nothing to show (Alt+K opens it from the keyboard).
+Boxes are laid out automatically, kept apart, with edges routed around them;
+drag anything where you want it.
 
 | Definition | Interconnection |
 |---|---|
@@ -75,6 +77,30 @@ around them; drag anything where you want it.
 |---|---|---|
 | ![Requirements diagram](docs/images/requirements.png) | ![Action flow](docs/images/action-dark.png) | ![State machine](docs/images/state-dark.png) |
 | Requirements with ids and text, and the parts that satisfy them. | The steps of an action and the successions between them. | States and the transitions between them. |
+
+UML's structural diagrams are views too. The text stays the source of truth and
+there is no UML model behind them: each one draws SysML v2 elements in that
+diagram's notation, from what the model holds.
+
+| Package | Class | Object |
+|---|---|---|
+| ![Package diagram](docs/images/package.png) | ![Class diagram](docs/images/class.png) | ![Object diagram](docs/images/object.png) |
+| Packages as folders, what they nest, and what they import: `public import` is an import, any other an access. | Definitions as classes with attributes and operations, specialization, composition for parts and association for `ref`. | `individual` elements and usages with values bound, underlined with their slots, and the links between them. |
+
+| Component | Composite Structure | Deployment |
+|---|---|---|
+| ![Component diagram](docs/images/component.png) | ![Composite structure diagram](docs/images/composite.png) | ![Deployment diagram](docs/images/deployment.png) |
+| Part definitions with ports on their border, a ball or a socket where a port's direction says which, wired by the connections the model writes. | What the interconnection diagram finds, in a frame, with the connectors on the ports. | What is allocated where: `allocate` draws an artifact deployed on a node, and connections between nodes are their communication paths. |
+
+| Profile |
+|---|
+| ![Profile diagram](docs/images/profile.png) |
+| `metadata def` as stereotypes, with the metaclasses they say they annotate and the ones they are found on. |
+
+Two things SysML v2 does not say are read from what it does. A port provides
+what flows out of it and requires what flows in, with `~` turning it round. And
+a metaclass in a profile is the kind of element the metadata was written on,
+unless the definition names one with `annotatedElement` or `baseType`.
 
 ## Editing
 
@@ -155,7 +181,7 @@ Nothing here reimplements what a library already does.
 | `SysmlStudio.Model` | works |
 | `SysmlStudio.Diagrams` | works |
 | `SysmlStudio.Editing` | rename (every reference, across files), delete, add, set type, specialize, maturity, doc comment, and drawing connect / flow / succession / transition / satisfy / dependency / allocate / specialization / composition; each re-parsed before it is accepted |
-| `SysmlStudio.App` | model tree, diagram tabs with a kind switcher, inspector, problems and usages, right-click menus on the tree and the canvas, edit dialogs that say what they will change, a relation tool, undo/redo, source tabs, SysML v2 JSON and XMI export; Save writes the changed files |
+| `SysmlStudio.App` | model tree, diagram tabs with a grouped kind switcher, inspector, problems and usages, right-click menus on the tree and the canvas, edit dialogs that say what they will change, a relation tool, undo/redo, source tabs, SysML v2 JSON and XMI export; Save writes the changed files |
 
 ### Building
 
