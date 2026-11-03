@@ -108,6 +108,72 @@ public sealed class EditingWindowTests : IDisposable
         Assert.Equal("Saved", shell.SaveState);
     }
 
+    /// <summary>A picker that always answers the same folder.</summary>
+    private sealed class PickedFolder(string folder) : SysmlStudio.App.Services.IShellDialogs
+    {
+        public Task<string?> PickFolderAsync() => Task.FromResult<string?>(folder);
+
+        public Task<string?> PickSaveFileAsync(string suggestedName, string extension) => Task.FromResult<string?>(null);
+    }
+
+    private static string OtherFolder => Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "Fixtures"));
+
+    [AvaloniaFact]
+    public void OpenFolderStaysInReachWithAModelOpen()
+    {
+        var (window, shell) = Open();
+
+        var button = Assert.Single(window.GetVisualDescendants().OfType<Button>(),
+            b => ReferenceEquals(b.Command, shell.OpenFolderCommand));
+        Assert.True(button.IsEffectivelyVisible);
+    }
+
+    [AvaloniaFact]
+    public void OpeningAnotherFolderWithNothingUnsavedAsksNothing()
+    {
+        var (_, shell) = Open();
+        shell.Attach(new PickedFolder(OtherFolder));
+
+        shell.OpenFolderCommand.Execute(null);
+        Settle();
+
+        Assert.Null(shell.Dialog);
+        Assert.Equal(OtherFolder, Path.GetFullPath(shell.Workspace!.Directory));
+    }
+
+    [AvaloniaFact]
+    public void OpeningAnotherFolderAsksBeforeUnsavedChangesAreLost()
+    {
+        var (_, shell) = Open();
+        _ = shell.AddTo(shell.Workspace!.Find("Sample::Vehicle"), "part");
+        Settle();
+        var add = Assert.IsType<DialogViewModel>(shell.Dialog);
+        add.Name = "brakes";
+        add.TypeText = "Sample::RollingThing";
+        add.ConfirmCommand.Execute(null);
+        Settle();
+        shell.Attach(new PickedFolder(OtherFolder));
+
+        // Cancel: still here, with the edit.
+        shell.OpenFolderCommand.Execute(null);
+        Settle();
+        var asked = Assert.IsType<DialogViewModel>(shell.Dialog);
+        Assert.True(asked.IsDanger);
+        asked.CancelCommand.Execute(null);
+        Settle();
+        Assert.Null(shell.Dialog);
+        Assert.Equal(Path.GetFullPath(_folder), Path.GetFullPath(shell.Workspace!.Directory));
+        Assert.NotNull(shell.Workspace!.Find("Sample::Vehicle::brakes"));
+
+        // Confirm: the other folder, and nothing of the edit reached the disk.
+        shell.OpenFolderCommand.Execute(null);
+        Settle();
+        Assert.IsType<DialogViewModel>(shell.Dialog).ConfirmCommand.Execute(null);
+        Settle();
+        Assert.Equal(OtherFolder, Path.GetFullPath(shell.Workspace!.Directory));
+        Assert.DoesNotContain("brakes", File.ReadAllText(SamplePath), StringComparison.Ordinal);
+    }
+
     [AvaloniaFact]
     public void TheRelationToolDrawsAConnectBetweenTwoClickedBoxes()
     {

@@ -135,6 +135,11 @@
           <ic:SymbolIcon Symbol="Settings" FontSize="19" />
         </Button>
         <StackPanel Margin="0,10,0,0" Spacing="4" HorizontalAlignment="Center">
+          <Button Classes="flat" Width="34" Height="34"
+                  Command="{Binding OpenFolderCommand}" ToolTip.Tip="{Binding Keys[open]}">
+            <ic:SymbolIcon Symbol="FolderOpen" FontSize="19" />
+          </Button>
+          <Border Height="1" Margin="6,2" Background="{DynamicResource BorderBrush}" />
           <Button Classes="flat" Classes.active="{Binding ShowsModel}" Width="34" Height="34"
                   Command="{Binding ShowSideCommand}" CommandParameter="{x:Static vm:SidePanel.Model}" ToolTip.Tip="{Binding Keys[showModel]}">
             <ic:SymbolIcon Symbol="DocumentMultiple" FontSize="19" />

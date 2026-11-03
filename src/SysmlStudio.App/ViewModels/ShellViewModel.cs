@@ -221,8 +221,24 @@ public sealed partial class ShellViewModel : ObservableObject
     [RelayCommand]
     private async Task OpenFolder()
     {
-        if (_dialogs is not null && await _dialogs.PickFolderAsync() is { } folder)
+        if (_dialogs is not null && await _dialogs.PickFolderAsync() is { } folder && await MayDropChanges())
             Open(folder);
+    }
+
+    /// <summary>Opening a folder drops what is unsaved, so the user decides first when there is any.</summary>
+    private async Task<bool> MayDropChanges()
+    {
+        foreach (var source in OpenSources())
+            source.FlushPendingReparse();
+
+        if (Workspace?.DirtyFiles.Any() != true && !OpenSources().Any(s => s.IsDirty))
+            return true;
+
+        return await ShowDialog(new DialogViewModel($"Discard changes to {WorkspaceName}?", "Discard and open")
+        {
+            IsDanger = true,
+            Explanation = "This workspace has unsaved changes. Opening another folder loses them; cancel and save to keep them.",
+        });
     }
 
     /// <summary>Reads a folder of .sysml files and shows what is in it.</summary>
