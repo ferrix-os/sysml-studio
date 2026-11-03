@@ -82,7 +82,7 @@ public sealed class DiagramTests
     {
         var diagram = DiagramBuilder.Build(DiagramKind.StateMachine, Fixture().Find("Sample::Running")!);
 
-        var edge = Assert.Single(diagram.Edges, e => e.Kind == RelationKind.Transition);
+        var edge = Assert.Single(diagram.Edges, e => e.Kind == RelationKind.Transition && !e.Source.IsPseudo);
         Assert.Equal("off", edge.Source.Label);
         Assert.Equal("on", edge.Target.Label);
     }

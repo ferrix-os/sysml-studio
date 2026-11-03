@@ -40,6 +40,24 @@ public enum DiagramKind
 
     /// <summary>UML profile diagram: metadata definitions as stereotypes, and what they apply to.</summary>
     Profile,
+
+    /// <summary>Use cases, their actors and subject, and what they include.</summary>
+    UseCase,
+
+    /// <summary>An action's steps and control nodes, in UML's activity notation.</summary>
+    Activity,
+
+    /// <summary>Lifelines and messages in time order, top to bottom.</summary>
+    Sequence,
+
+    /// <summary>The same messages, numbered, on the links between participants.</summary>
+    Communication,
+
+    /// <summary>An activity whose steps are interactions.</summary>
+    InteractionOverview,
+
+    /// <summary>Lifelines over an axis of what comes after what.</summary>
+    Timing,
 }
 
 /// <summary>What a box looks like, where UML has a shape for what it stands for.</summary>
@@ -103,7 +121,7 @@ public sealed class DiagramPort(string name, PortFlow flow = PortFlow.None)
 }
 
 /// <summary>One box. <see cref="Element"/> is what it stands for in the model.</summary>
-public sealed class DiagramNode(Element element, string label, string? stereotype = null, string? pseudo = null)
+public sealed partial class DiagramNode(Element element, string label, string? stereotype = null, string? pseudo = null)
 {
     public Element Element { get; } = element;
     public string Label { get; } = label;
@@ -153,12 +171,12 @@ public sealed class DiagramNode(Element element, string label, string? stereotyp
 }
 
 /// <summary>One arrow, drawn the way UML draws that relation.</summary>
-public sealed class DiagramEdge(DiagramNode source, DiagramNode target, RelationKind kind, string? label = null)
+public sealed partial class DiagramEdge(DiagramNode source, DiagramNode target, RelationKind kind, string? label = null)
 {
     public DiagramNode Source { get; } = source;
     public DiagramNode Target { get; } = target;
     public RelationKind Kind { get; } = kind;
-    public string? Label { get; } = label;
+    public string? Label { get; set; } = label;
 
     /// <summary>The name of the relation itself, when it has one and the label says something else.</summary>
     public string? Name { get; init; }
@@ -187,7 +205,7 @@ public sealed class DiagramEdge(DiagramNode source, DiagramNode target, Relation
 /// layout engine and may be overridden per diagram by the sidecar file; the
 /// .sysml files never carry coordinates.
 /// </summary>
-public sealed class Diagram(DiagramKind kind, Element root)
+public sealed partial class Diagram(DiagramKind kind, Element root)
 {
     public DiagramKind Kind { get; } = kind;
 

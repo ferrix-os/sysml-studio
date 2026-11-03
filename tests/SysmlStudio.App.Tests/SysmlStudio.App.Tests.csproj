@@ -25,6 +25,7 @@
     <None Include="..\SysmlStudio.Tests\Fixtures\**" LinkBase="Fixtures" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\SysmlStudio.Tests\UmlFixtures\**" LinkBase="UmlFixtures" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\samples\**" LinkBase="Samples" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\samples\drone\**" LinkBase="DroneModel" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

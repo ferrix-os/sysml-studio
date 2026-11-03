@@ -78,6 +78,42 @@ foreach (var (name, kind, root) in new[]
     });
 }
 
+Shoot("use-case", shell =>
+{
+    shell.Select(Find(shell, "DroneInteractions::DeliverParcel"));
+    shell.OpenDiagramCommand.Execute(DiagramKind.UseCase);
+});
+
+Shoot("activity", shell =>
+{
+    shell.Select(Find(shell, "DroneBehaviour::PlanFlight"));
+    shell.OpenDiagramCommand.Execute(DiagramKind.Activity);
+});
+
+Shoot("sequence", shell =>
+{
+    shell.Select(Find(shell, "DroneInteractions::RequestClearance"));
+    shell.OpenDiagramCommand.Execute(DiagramKind.Sequence);
+});
+
+Shoot("communication", shell =>
+{
+    shell.Select(Find(shell, "DroneInteractions::RequestClearance"));
+    shell.OpenDiagramCommand.Execute(DiagramKind.Communication);
+});
+
+Shoot("interaction-overview", shell =>
+{
+    shell.Select(Find(shell, "DroneInteractions::DeliveryOverview"));
+    shell.OpenDiagramCommand.Execute(DiagramKind.InteractionOverview);
+});
+
+Shoot("timing", shell =>
+{
+    shell.Select(Find(shell, "DroneInteractions::DeliveryFlight"));
+    shell.OpenDiagramCommand.Execute(DiagramKind.Timing);
+});
+
 Shoot("rename", shell =>
 {
     shell.Select(Find(shell, "DroneStructure"));

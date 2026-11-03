@@ -163,9 +163,9 @@ public sealed class SysmlWorkspace
                 if (relation.Kind == RelationKind.Import)
                     continue;
 
-                relation.Target = Resolve(relation.TargetReference, element, byQualifiedName, byShortName);
+                relation.Target = relation.TargetNode ?? Resolve(relation.TargetReference, element, byQualifiedName, byShortName);
                 if (relation.OriginReference is { } origin)
-                    relation.Origin = Resolve(origin, element, byQualifiedName, byShortName);
+                    relation.Origin = relation.OriginNode ?? Resolve(origin, element, byQualifiedName, byShortName);
 
                 if (relation.Target is not null || MayComeFromOutside(relation.TargetReference, element, byQualifiedName))
                     continue;

@@ -5,7 +5,11 @@ var dir = args[0];
 var workspace = SysmlWorkspace.Load(dir);
 
 foreach (var file in workspace.Files.OrderBy(f => f.Path))
+{
     Console.WriteLine($"{(file.IsValid ? "OK   " : "FAIL ")} {Path.GetFileName(file.Path),-24} {file.Errors.Count} errors");
+    foreach (var error in file.Errors.Take(5))
+        Console.WriteLine($"      line {error.Line}: {error.Message}");
+}
 
 Console.WriteLine();
 Console.WriteLine($"elements: {workspace.Elements.Count()}");

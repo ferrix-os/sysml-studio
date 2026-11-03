@@ -474,6 +474,8 @@ public sealed partial class ShellViewModel
         NewRelation.Dependency => "depend on",
         NewRelation.Allocate => "allocate to",
         NewRelation.Specialization => "specialize",
+        NewRelation.Include => "include",
+        NewRelation.Message => "send a message to",
         _ => "own",
     };
 
@@ -485,6 +487,8 @@ public sealed partial class ShellViewModel
         NewRelation.Satisfy => "element that should",
         NewRelation.Specialization => "definition that should",
         NewRelation.Composition => "owner that should",
+        NewRelation.Include => "use case that should",
+        NewRelation.Message => "lifeline that should",
         _ => "element that should",
     };
 
@@ -495,6 +499,8 @@ public sealed partial class ShellViewModel
         NewRelation.Transition => "state",
         NewRelation.Satisfy => "requirement",
         NewRelation.Specialization => "definition",
+        NewRelation.Include => "use case",
+        NewRelation.Message => "lifeline",
         _ => "element",
     };
 }

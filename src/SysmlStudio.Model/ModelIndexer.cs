@@ -26,7 +26,18 @@ public static class ModelIndexer
         ["libraryPackage"] = "library package",
         ["dependency"] = "dependency",
         ["namespace"] = "namespace",
+        ["message"] = "message",
+        ["mergeNode"] = "merge",
+        ["decisionNode"] = "decide",
+        ["joinNode"] = "join",
+        ["forkNode"] = "fork",
+        ["sendNode"] = "send action",
+        ["acceptNode"] = "accept action",
+        ["terminateNode"] = "terminate action",
     };
+
+    /// <summary>Bodies read in order, where "then" means whatever was written before it.</summary>
+    private static readonly HashSet<string> OrderedBodies = ["actionBody", "definitionBody", "caseBody", "actionBodyParameter"];
 
     /// <summary>Rules that look like element rules by name but are not.</summary>
     private static readonly HashSet<string> NotElementRules =
@@ -91,9 +102,15 @@ public static class ModelIndexer
                 continue;
             }
 
-            if (rule == "actionBody")
+            if (OrderedBodies.Contains(rule))
             {
-                WalkActionBody(ctx, parent, file);
+                WalkOrderedBody(ctx, parent, file);
+                continue;
+            }
+
+            if (rule is "stateDefBody" or "stateUsageBody")
+            {
+                WalkStateBody(ctx, parent, file);
                 continue;
             }
 
@@ -111,14 +128,27 @@ public static class ModelIndexer
         }
     }
 
-    /// <summary>
-    /// An action's body, read in order so that the shorthand successions become
-    /// relations: "first start; then action a; then action b; then done;" is
-    /// start, a, b, done in that order, though only "first" and "then" say so.
-    /// </summary>
-    private static void WalkActionBody(ParserRuleContext body, Element owner, SourceFile file)
+    /// <summary>What "then" follows: a name as written, and the element when it was read in place.</summary>
+    private readonly record struct Step(string Reference, Element? Node)
     {
-        string? previous = null;
+        public static Step Of(Element element) => new(element.Name ?? element.Kind, element);
+    }
+
+    /// <summary>
+    /// <para>
+    /// A body read in order so that the shorthand successions become relations:
+    /// "first start; then action a; then action b; then done;" is start, a, b,
+    /// done in that order, though only "first" and "then" say so.
+    /// </para>
+    /// <para>
+    /// "then b; then c;" written after a fork or a decision leaves that node
+    /// each time, and so does anything with a condition. Written after anything
+    /// else it continues from b, which is how models chain references.
+    /// </para>
+    /// </summary>
+    private static void WalkOrderedBody(ParserRuleContext body, Element owner, SourceFile file)
+    {
+        Step? previous = null;
         for (var i = 0; i < body.ChildCount; i++)
         {
             if (body.GetChild(i) is not ParserRuleContext item)
@@ -126,31 +156,164 @@ public static class ModelIndexer
 
             var before = owner.Children.Count;
             WalkOne(item, owner, file);
-            var added = owner.Children.Skip(before).LastOrDefault(c => c.Name is not null);
+            var added = owner.Children.Skip(before).LastOrDefault(c => c.Name is not null || IsAnonymousStep(c));
 
             var initial = FindShallow(item, "initialNodeMember").FirstOrDefault();
             if (initial is not null)
             {
-                previous = FindShallow(initial, "qualifiedName").FirstOrDefault()?.GetText();
+                previous = FindShallow(initial, "qualifiedName").FirstOrDefault()?.GetText() is { } first ? new Step(first, null) : null;
+            }
+            else if (added is not null)
+            {
+                if (FindShallow(item, "sourceSuccessionMember").Count > 0 && previous is { } from)
+                    owner.Add(Succession(owner, from, Step.Of(added)));
+                previous = Step.Of(added);
+            }
+
+            var fans = added?.Kind is "fork" or "decide" or "merge" or "join";
+            foreach (var succession in FindShallow(item, "actionTargetSuccessionMember"))
+            {
+                if (FindShallow(succession, "connectorEndMember").FirstOrDefault() is not { } end || previous is not { } source)
+                    continue;
+
+                var guard = GuardOf(succession);
+                owner.Add(Succession(owner, source, new Step(Written(end), null), guard, end));
+                if (guard is null && !fans)
+                    previous = new Step(Written(end), null);
+            }
+
+            foreach (var guarded in FindShallow(item, "guardedSuccessionMember"))
+            {
+                var from = FindShallow(guarded, "featureChainMember").FirstOrDefault();
+                var to = FindShallow(guarded, "connectorEndMember").FirstOrDefault();
+                if (from is not null && to is not null)
+                    owner.Add(Succession(owner, new Step(Written(from), null), new Step(Written(to), null), GuardOf(guarded), to));
+            }
+        }
+    }
+
+    /// <summary>A step that has no name to be followed by, but is still a place in the flow.</summary>
+    private static bool IsAnonymousStep(Element element) => element.Kind is "fork" or "decide" or "merge" or "join"
+        or "send action" or "accept action" or "terminate action" or "perform action" or "event occurrence";
+
+    private static Relation Succession(Element owner, Step from, Step to, string? guard = null, ParserRuleContext? writtenTarget = null)
+        => new(RelationKind.Succession, owner, to.Reference, originReference: from.Reference)
+        {
+            OriginNode = from.Node,
+            TargetNode = to.Node,
+            Guard = guard,
+            TargetSpan = writtenTarget is null ? null : Span(writtenTarget),
+        };
+
+    /// <summary>The condition of a guarded succession as written, "else" for the default one, null without one.</summary>
+    private static string? GuardOf(ParserRuleContext succession)
+    {
+        if (FindShallow(succession, "defaultTargetSuccession").Count > 0)
+            return "else";
+        return FindShallow(succession, "guardExpressionMember").FirstOrDefault() is { } guard
+            ? WithoutKeyword(Written(guard), "if")
+            : null;
+    }
+
+    private static string WithoutKeyword(string written, string keyword)
+        => written.StartsWith(keyword, StringComparison.Ordinal) ? written[keyword.Length..].Trim() : written.Trim();
+
+    /// <summary>
+    /// A state's body, read in order: "entry; then off;" is the transition from
+    /// the initial pseudostate, an action written "entry", "do" or "exit" says
+    /// so, and "state a; accept x then b;" is a transition out of a.
+    /// </summary>
+    private static void WalkStateBody(ParserRuleContext body, Element owner, SourceFile file)
+    {
+        owner.IsParallel = body.GetChild(0)?.GetText() == "parallel";
+
+        Element? previous = null;
+        for (var i = 0; i < body.ChildCount; i++)
+        {
+            if (body.GetChild(i) is not ParserRuleContext item)
                 continue;
+
+            var before = owner.Children.Count;
+            WalkOne(item, owner, file);
+            var added = owner.Children.Skip(before).ToList();
+
+            foreach (var (rule, word) in new[] { ("entryActionMember", "entry"), ("doActionMember", "do"), ("exitActionMember", "exit") })
+            {
+                if (FindShallow(item, rule).Count > 0 && added.Find(c => c.Kind == "state action") is { } action)
+                    action.StateAction = word;
             }
 
-            var isThen = FindShallow(item, "sourceSuccessionMember").Count > 0;
-            if (added?.Name is { } addedName)
+            foreach (var entry in FindShallow(item, "entryTransitionMember"))
             {
-                if (isThen && previous is not null)
-                    owner.Add(new Relation(RelationKind.Succession, owner, addedName, originReference: previous));
-                previous = addedName;
+                if (FindShallow(entry, "connectorEndMember").FirstOrDefault() is { } end)
+                {
+                    var guard = FindShallow(entry, "guardExpressionMember").FirstOrDefault();
+                    owner.Add(new Relation(RelationKind.Transition, owner, Written(end),
+                        guard is null ? null : $"[{WithoutKeyword(Written(guard), "if")}]", originReference: EntryOrigin)
+                    {
+                        TargetSpan = Span(end),
+                    });
+                }
             }
 
-            var targetSuccession = FindShallow(item, "actionTargetSuccessionMember").FirstOrDefault();
-            var end = targetSuccession is null ? null : FindShallow(targetSuccession, "connectorEndMember").FirstOrDefault();
-            if (end is not null && previous is not null)
+            var state = added.Find(c => c.Kind is "state" or "exhibit state" && c.Name is not null);
+            if (state is null)
+                continue;
+
+            if (FindShallow(item, "sourceSuccessionMember").Count > 0 && previous is not null)
             {
-                var target = Written(end);
-                owner.Add(new Relation(RelationKind.Succession, owner, target, originReference: previous));
-                previous = target;
+                owner.Add(new Relation(RelationKind.Transition, owner, state.Name!, originReference: previous.Name)
+                {
+                    OriginNode = previous,
+                    TargetNode = state,
+                });
             }
+
+            foreach (var outgoing in added.Where(c => c.Kind == "target transition"))
+                ReadTransition(outgoing, outgoing.Context, state.Name);
+
+            previous = state;
+        }
+    }
+
+    /// <summary>The origin an initial transition names: it has none in the model, only "entry; then s;".</summary>
+    public const string EntryOrigin = "entry";
+
+    /// <summary>
+    /// A transition's relation, labelled UML's way: "trigger [guard] / effect".
+    /// <paramref name="origin"/> is the state it leaves when the text does not
+    /// name one, which it does not for "state a; accept x then b;".
+    /// </summary>
+    private static void ReadTransition(Element element, ParserRuleContext ctx, string? origin)
+    {
+        // Given an origin there is no source in the text, and a chain found
+        // here would be one inside the guard's expression.
+        var source = origin is null ? FindShallow(ctx, "featureChainMember").FirstOrDefault() : null;
+        var target = FindShallow(ctx, "transitionSuccessionMember").FirstOrDefault();
+        if (target is null || (source is null && origin is null))
+            return;
+
+        var trigger = FindShallow(ctx, "triggerActionMember").FirstOrDefault();
+        var guard = FindShallow(ctx, "guardExpressionMember").FirstOrDefault();
+        var effect = FindShallow(ctx, "effectBehaviorMember").FirstOrDefault();
+
+        var parts = new List<string>();
+        if (trigger is not null)
+            parts.Add(WithoutKeyword(Written(trigger), "accept"));
+        if (guard is not null)
+            parts.Add($"[{WithoutKeyword(Written(guard), "if")}]");
+        if (effect is not null)
+            parts.Add("/ " + WithoutKeyword(WithoutKeyword(Written(effect), "do"), "action"));
+        var label = parts.Count == 0 ? null : string.Join(" ", parts);
+
+        if (source is not null)
+        {
+            element.Add(Relate(RelationKind.Transition, element, target, label, source));
+            element.Value = Written(source);
+        }
+        else
+        {
+            element.Add(new Relation(RelationKind.Transition, element, Written(target), label, origin) { TargetSpan = Span(target) });
         }
     }
 
@@ -220,7 +383,7 @@ public static class ModelIndexer
     /// <summary>Fills in name, documentation, metadata and the element's own relations.</summary>
     private static void Describe(Element element, ParserRuleContext ctx)
     {
-        var identification = FindShallow(ctx, "identification").FirstOrDefault();
+        var identification = FindShallow(ctx, "identification", "featureIdentification").FirstOrDefault();
         if (identification is not null)
             ReadIdentification(element, identification);
 
@@ -348,18 +511,41 @@ public static class ModelIndexer
             "interface" => RelationKind.Interface,
             "allocation" => RelationKind.Allocate,
             "flow" or "succession flow" => RelationKind.Flow,
+            "message" => RelationKind.Message,
             _ => (RelationKind?)null,
         };
 
         if (connectorKind is { } ck)
         {
-            var ends = FindShallow(ctx, "connectorEndMember", "interfaceEndMember", "messageEventMember");
+            var ends = FindShallow(ctx, "connectorEndMember", "interfaceEndMember", "messageEventMember", "flowEndMember");
             for (var i = 0; i + 1 < ends.Count; i++)
                 element.Add(Relate(ck, element, ends[i + 1], element.Name, ends[i]));
         }
 
+        if (FindShallow(ctx, "portionKind").FirstOrDefault() is { } portion)
+            element.PortionKind = portion.GetText();
+
+        if (FindShallow(ctx, "flowPayloadFeatureMember", "payloadFeatureMember").FirstOrDefault() is { } payload)
+            element.Payload = Written(payload);
+
         switch (element.Kind)
         {
+            case "send action" or "accept action":
+                {
+                    // What is sent is a parameter; what is accepted, the payload parameter.
+                    if (FindShallow(ctx, "payloadParameterMember", "nodeParameterMember").FirstOrDefault() is { } carried)
+                        element.Payload = Written(carried);
+                    break;
+                }
+
+            case "perform action" or "state perform action" or "transition perform action" or "include use case" or "event occurrence" or "exhibit state":
+                {
+                    // "perform x", "include x", "event m.sourceEvent": the usage is a subset of what it names.
+                    foreach (var named in FindShallow(ctx, "ownedReferenceSubsetting"))
+                        element.Add(Relate(RelationKind.Specialization, element, named));
+                    break;
+                }
+
             case "satisfy":
                 {
                     // "satisfy R by x": one arrow, from what satisfies to what is satisfied.
@@ -379,22 +565,8 @@ public static class ModelIndexer
                 }
 
             case "transition":
-                {
-                    var source = FindShallow(ctx, "featureChainMember").FirstOrDefault();
-                    var target = FindShallow(ctx, "transitionSuccessionMember").FirstOrDefault();
-                    var guard = FindShallow(ctx, "guardExpressionMember").FirstOrDefault();
-                    var trigger = FindShallow(ctx, "triggerActionMember").FirstOrDefault();
-                    if (source is not null && target is not null)
-                    {
-                        var label = string.Join(" ", new[] { trigger, guard }
-                            .OfType<ParserRuleContext>()
-                            .Select(Written));
-                        element.Add(Relate(RelationKind.Transition, element, target, label.Length == 0 ? null : label, source));
-                        element.Value = Written(source);
-                    }
-
-                    break;
-                }
+                ReadTransition(element, ctx, origin: null);
+                break;
 
             case "succession":
                 {
@@ -486,6 +658,9 @@ public static class ModelIndexer
 
                 if (rule is "metadataFeature" or "prefixMetadataMember" or "prefixMetadataAnnotation")
                     continue; // metadata is read on its own, never as the element's value or type
+
+                if (rule is "flowPayloadFeatureMember" or "payloadFeatureMember")
+                    continue; // what a message carries has a name and a type, and neither is the message's
 
                 Collect(child, false);
             }

@@ -28,9 +28,9 @@ public static class SvgExporter
     public static string ToSvg(Diagram diagram)
     {
         var frame = diagram.FrameBounds();
-        var (shiftX, shiftY) = frame is { } f ? (Margin - f.X, Margin - f.Y) : (Margin, Margin);
-        var width = diagram.Nodes.Count == 0 ? 200 : Right(diagram, frame) + shiftX + Margin;
-        var height = diagram.Nodes.Count == 0 ? 100 : Bottom(diagram, frame) + shiftY + Margin;
+        var (left, top, right, bottom) = Extent(diagram, frame);
+        var width = right - left + (Margin * 2);
+        var height = bottom - top + (Margin * 2);
 
         var svg = new StringBuilder();
         svg.Append(CultureInfo.InvariantCulture,
@@ -39,7 +39,7 @@ public static class SvgExporter
         svg.AppendLine(Defs);
         svg.Append("""<rect width="100%" height="100%" fill="#ffffff"/>""");
         svg.AppendLine();
-        svg.Append(CultureInfo.InvariantCulture, $"""<g transform="translate({N(shiftX)},{N(shiftY)})">""");
+        svg.Append(CultureInfo.InvariantCulture, $"""<g transform="translate({N(Margin - left)},{N(Margin - top)})">""");
         svg.AppendLine();
 
         if (frame is { } bounds)
@@ -56,12 +56,6 @@ public static class SvgExporter
         return svg.ToString();
     }
 
-    private static double Right(Diagram diagram, (double X, double Y, double Width, double Height)? frame)
-        => frame is { } f ? f.X + f.Width : diagram.Nodes.Max(n => n.X + n.Width);
-
-    private static double Bottom(Diagram diagram, (double X, double Y, double Width, double Height)? frame)
-        => frame is { } f ? f.Y + f.Height : diagram.Nodes.Max(n => n.Y + n.Height);
-
     /// <summary>The frame round a whole diagram, with its label in a corner tab, as UML frames a diagram.</summary>
     private static string Frame(string label, (double X, double Y, double Width, double Height) frame)
     {
@@ -69,6 +63,43 @@ public static class SvgExporter
         const double tabHeight = 22;
         return string.Create(CultureInfo.InvariantCulture,
             $"""<g><rect x="{N(frame.X)}" y="{N(frame.Y)}" width="{N(frame.Width)}" height="{N(frame.Height)}" fill="none" stroke="#90A4AE"/><path d="M {N(frame.X)} {N(frame.Y + tabHeight)} H {N(frame.X + tabWidth - 8)} L {N(frame.X + tabWidth)} {N(frame.Y + tabHeight - 8)} V {N(frame.Y)}" fill="none" stroke="#90A4AE"/><text x="{N(frame.X + 9)}" y="{N(frame.Y + 15)}" fill="#546E7A">{Escape(label)}</text></g>""");
+    }
+
+    /// <summary>What the picture covers: every node, what a mark draws past its node's edge, and the routes that leave them.</summary>
+    private static (double Left, double Top, double Right, double Bottom) Extent(Diagram diagram, (double X, double Y, double Width, double Height)? frame)
+    {
+        if (diagram.Nodes.Count == 0)
+            return (0, 0, 200 - (Margin * 2), 100 - (Margin * 2));
+
+        var left = Math.Min(frame?.X ?? 0, diagram.Nodes.Min(n => n.X));
+        var top = Math.Min(frame?.Y ?? 0, diagram.Nodes.Min(n => n.Y));
+        var right = diagram.Nodes.Max(n => n.X + n.Width);
+        var bottom = diagram.Nodes.Max(n => n.Y + n.Height);
+
+        if (frame is { } f)
+        {
+            right = Math.Max(right, f.X + f.Width);
+            bottom = Math.Max(bottom, f.Y + f.Height);
+        }
+
+        foreach (var node in diagram.Nodes.Where(n => n.IsDrawn))
+        {
+            foreach (var text in NodeMarks.For(node).OfType<TextMark>().Where(t => t.Anchor == TextAnchor.Start))
+                right = Math.Max(right, node.X + text.X + NodeMarks.TextWidth(text.Text, text.Size));
+        }
+
+        foreach (var (x, y) in diagram.Edges.SelectMany(e => e.Waypoints))
+        {
+            left = Math.Min(left, x);
+            right = Math.Max(right, x);
+            top = Math.Min(top, y);
+            bottom = Math.Max(bottom, y);
+        }
+
+        foreach (var edge in diagram.Edges.Where(e => e.LabelCentre is not null && e.Label is not null))
+            right = Math.Max(right, edge.LabelCentre!.Value.X + (edge.Label!.Split('\n').Max(l => l.Length) * 3.4));
+
+        return (left, top, right, bottom);
     }
 
     /// <summary>The three arrowheads UML asks for: hollow triangle, filled, open.</summary>
@@ -102,6 +133,9 @@ public static class SvgExporter
         if (node.Shape != NodeShape.Box)
             return UmlNode(node);
 
+        if (node.IsDrawn)
+            return Marks(node);
+
         if (node.IsPseudo)
         {
             var cx = N(node.X + (node.Width / 2));
@@ -112,9 +146,10 @@ public static class SvgExporter
         }
 
         var colour = Colour(node.Maturity);
+        var radius = node.Notation == NodeNotation.Rounded ? "12" : "4";
         var svg = new StringBuilder();
         svg.Append(CultureInfo.InvariantCulture,
-            $"""<g><rect x="{N(node.X)}" y="{N(node.Y)}" width="{N(node.Width)}" height="{N(node.Height)}" rx="4" fill="#ffffff" stroke="{colour}" stroke-width="2"/>""");
+            $"""<g><rect x="{N(node.X)}" y="{N(node.Y)}" width="{N(node.Width)}" height="{N(node.Height)}" rx="{radius}" fill="#ffffff" stroke="{colour}" stroke-width="2"/>""");
 
         var line = node.Y + 16;
         if (node.Stereotype is { Length: > 0 } stereotype)
@@ -216,6 +251,17 @@ public static class SvgExporter
         return svg.ToString();
     }
 
+    /// <summary>A node drawn from the same marks the canvas draws it from.</summary>
+    private static string Marks(DiagramNode node)
+    {
+        var svg = new StringBuilder();
+        svg.Append(CultureInfo.InvariantCulture, $"""<g transform="translate({N(node.X)},{N(node.Y)})">""");
+        foreach (var mark in NodeMarks.For(node))
+            svg.Append(Mark(mark, node));
+        svg.Append("</g>");
+        return svg.ToString();
+    }
+
     /// <summary>A port: its square on the border, its ball or socket outside, its name inside.</summary>
     private static string Port(DiagramNode node, DiagramPort port)
     {
@@ -244,6 +290,37 @@ public static class SvgExporter
         return svg.ToString();
     }
 
+    private static string Mark(IMark mark, DiagramNode node) => mark switch
+    {
+        LineMark line => string.Create(CultureInfo.InvariantCulture,
+            $"""<line x1="{N(line.X1)}" y1="{N(line.Y1)}" x2="{N(line.X2)}" y2="{N(line.Y2)}" stroke="{Paint(line.Stroke, node)}" stroke-width="{N(line.Thickness)}"{(line.Dashed ? " stroke-dasharray=\"6 4\"" : string.Empty)}/>"""),
+
+        RectMark rect => string.Create(CultureInfo.InvariantCulture,
+            $"""<rect x="{N(rect.X)}" y="{N(rect.Y)}" width="{N(rect.Width)}" height="{N(rect.Height)}" rx="{N(rect.Radius)}" fill="{Paint(rect.Fill, node)}" stroke="{Paint(rect.Stroke, node)}" stroke-width="1.5"/>"""),
+
+        EllipseMark ellipse => string.Create(CultureInfo.InvariantCulture,
+            $"""<ellipse cx="{N(ellipse.CentreX)}" cy="{N(ellipse.CentreY)}" rx="{N(ellipse.RadiusX)}" ry="{N(ellipse.RadiusY)}" fill="{Paint(ellipse.Fill, node)}" stroke="{Paint(ellipse.Stroke, node)}" stroke-width="{N(ellipse.Thickness)}"/>"""),
+
+        PolygonMark polygon => string.Create(CultureInfo.InvariantCulture,
+            $"""<polygon points="{string.Join(" ", polygon.Points.Select(p => $"{N(p.X)},{N(p.Y)}"))}" fill="{Paint(polygon.Fill, node)}" stroke="{Paint(polygon.Stroke, node)}" stroke-width="1.5"/>"""),
+
+        TextMark text => string.Create(CultureInfo.InvariantCulture,
+            $"""<text x="{N(text.X)}" y="{N(text.Y + (text.Size * 0.35))}" font-size="{N(text.Size)}" fill="{Paint(text.Colour, node)}"{(text.Anchor == TextAnchor.Middle ? " text-anchor=\"middle\"" : string.Empty)}{(text.Strong ? " font-weight=\"600\"" : string.Empty)}>{Escape(text.Text)}</text>"""),
+
+        _ => string.Empty,
+    };
+
+    private static string Paint(Ink ink, DiagramNode node) => ink switch
+    {
+        Ink.Line => "#455A64",
+        Ink.Outline => Colour(node.Maturity),
+        Ink.Surface => "#ffffff",
+        Ink.Text => "#212121",
+        Ink.Muted => "#546E7A",
+        Ink.Faint => "#90A4AE",
+        _ => "none",
+    };
+
     private static string Edge(DiagramEdge edge)
     {
         var points = edge.Waypoints.Count >= 2
@@ -254,15 +331,8 @@ public static class SvgExporter
             string.Create(CultureInfo.InvariantCulture, $"{(i == 0 ? "M" : "L")} {N(p.X)} {N(p.Y)}")));
 
         var dash = IsDashed(edge.Kind) ? """ stroke-dasharray="6 4" """ : " ";
-        // A connection joins two ends as equals, and the canvas draws no head on it either.
-        var marker = edge.IsHeadless || edge.Kind is RelationKind.Containment or RelationKind.Link or RelationKind.Connect or RelationKind.Interface
-            ? string.Empty
-            : $"""marker-end="url(#{Marker(edge.Kind)})" """;
         var (X, Y) = edge.LabelCentre is { } placed ? (placed.X, placed.Y + 4) : points[points.Count / 2];
-        var label = edge.Label is { Length: > 0 } text
-            ? string.Create(CultureInfo.InvariantCulture,
-                $"""<text x="{N(X)}" y="{N(Y - 4)}" fill="#546E7A" font-size="10" text-anchor="middle" paint-order="stroke" stroke="#ffffff" stroke-width="3">{Escape(Shorten(text))}</text>""")
-            : string.Empty;
+        var label = edge.Label is { Length: > 0 } text ? Label(text, X, Y) : string.Empty;
 
         var start = edge.Kind switch
         {
@@ -270,19 +340,44 @@ public static class SvgExporter
             RelationKind.Containment => """ marker-start="url(#containment)" """,
             _ => " ",
         };
+        var end = Marker(edge) is { } marker ? $"marker-end=\"url(#{marker})\"" : string.Empty;
         return string.Create(CultureInfo.InvariantCulture,
-            $"""<path d="{path}" fill="none" stroke="#455A64"{dash}{start}{marker}/>{label}""");
+            $"""<path d="{path}" fill="none" stroke="#455A64"{dash}{start}{end}/>{label}""");
     }
 
-    /// <summary>A hollow triangle for specialization, an open arrow for a trace, filled otherwise.</summary>
-    private static string Marker(RelationKind kind) => kind switch
+    /// <summary>An edge's label, one text element to a line: a communication link lists its messages.</summary>
+    private static string Label(string text, double x, double y)
     {
-        RelationKind.Specialization or RelationKind.Redefinition => "triangle",
-        RelationKind.Satisfy or RelationKind.Verify or RelationKind.Allocate
-            or RelationKind.Dependency or RelationKind.Typing or RelationKind.Import or RelationKind.Association => "open",
-        RelationKind.Extension => "extension",
-        _ => "arrow",
-    };
+        var lines = text.Split('\n');
+        var first = y - 4 - ((lines.Length - 1) * 7);
+        return string.Concat(lines.Select((line, i) => string.Create(CultureInfo.InvariantCulture,
+            $"""<text x="{N(x)}" y="{N(first + (i * 14))}" fill="#546E7A" font-size="10" text-anchor="middle" paint-order="stroke" stroke="#ffffff" stroke-width="3">{Escape(Shorten(line))}</text>""")));
+    }
+
+    /// <summary>A hollow triangle for specialization, an open arrow for a trace, a control flow and a message nobody waits for, filled otherwise, none on an association.</summary>
+    private static string? Marker(DiagramEdge edge)
+    {
+        // A connection joins two ends as equals, and the canvas draws no head on it either.
+        if (edge.Notation == EdgeNotation.Association || edge.IsHeadless
+            || edge.Kind is RelationKind.Containment or RelationKind.Link or RelationKind.Connect or RelationKind.Interface)
+        {
+            return null;
+        }
+
+        if (edge.HasOpenHead)
+            return "open";
+
+        return edge.Notation == EdgeNotation.ByKind
+            ? edge.Kind switch
+            {
+                RelationKind.Specialization or RelationKind.Redefinition => "triangle",
+                RelationKind.Satisfy or RelationKind.Verify or RelationKind.Allocate
+                    or RelationKind.Dependency or RelationKind.Typing or RelationKind.Import or RelationKind.Association => "open",
+                RelationKind.Extension => "extension",
+                _ => "arrow",
+            }
+            : "arrow";
+    }
 
     private static bool IsDashed(RelationKind kind) => kind
         is RelationKind.Satisfy or RelationKind.Verify or RelationKind.Allocate

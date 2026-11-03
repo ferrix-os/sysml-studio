@@ -17,6 +17,8 @@ public enum NewRelation
     Allocate,
     Specialization,
     Composition,
+    Include,
+    Message,
 }
 
 /// <summary>
@@ -161,10 +163,12 @@ public static partial class ModelEditor
     /// <summary>The kinds of element that can be added inside <paramref name="parent"/>, in menu order.</summary>
     public static IReadOnlyList<string> ChildKinds(Element parent) => parent.Kind switch
     {
-        "package" or "library package" => ["part def", "part", "port def", "item def", "attribute def", "action def", "state def", "requirement def", "requirement", "enum def", "package"],
+        "package" or "library package" => ["part def", "part", "port def", "item def", "attribute def", "action def", "state def", "requirement def", "requirement", "enum def", "use case def", "occurrence def", "package"],
         "part def" or "part" or "item def" or "item" => ["part", "port", "attribute", "item", "ref", "action", "state"],
         "port def" or "port" => ["attribute", "item", "port"],
-        "action def" or "action" => ["action", "attribute"],
+        "action def" or "action" => ["action", "attribute", "part", "decide", "merge", "fork", "join"],
+        "use case def" or "use case" => ["use case", "actor", "subject"],
+        "occurrence def" or "occurrence" or "individual def" or "individual" => ["part", "item", "occurrence", "attribute"],
         "state def" or "state" => ["state"],
         "requirement def" or "requirement" => ["requirement", "attribute"],
         "attribute def" or "attribute" => ["attribute"],
@@ -173,7 +177,7 @@ public static partial class ModelEditor
     };
 
     /// <summary>Whether a kind takes a type: "part x : Engine".</summary>
-    public static bool IsTyped(string kind) => kind is "part" or "port" or "attribute" or "item" or "ref" or "requirement";
+    public static bool IsTyped(string kind) => kind is "part" or "port" or "attribute" or "item" or "ref" or "requirement" or "actor" or "subject" or "occurrence";
 
     /// <summary>Adds a new element at the end of <paramref name="parent"/>'s body.</summary>
     public static EditPlan AddChild(Element parent, string kind, string name, string? typeReference = null)
@@ -402,6 +406,19 @@ public static partial class ModelEditor
                         _ => $"transition first {a} then {b};",
                     };
                     return new EditPlan($"{kind} {from.DisplayName} → {to.DisplayName}", [InsertInBody(diagramRoot, statement)]);
+                }
+
+            case NewRelation.Include:
+                return new EditPlan($"{from.DisplayName} includes {to.DisplayName}",
+                    [InsertInBody(from, $"include {Reference(to, from)};")]);
+
+            case NewRelation.Message:
+                {
+                    // Named, because a message with no name says nothing on its arrow;
+                    // last in the body, because written order is the order nothing else states.
+                    var name = Enumerable.Range(1, int.MaxValue).Select(i => $"message{i}").First(n => diagramRoot.Children.All(c => c.Name != n));
+                    return new EditPlan($"Message {from.DisplayName} → {to.DisplayName}",
+                        [InsertInBody(diagramRoot, $"message {name} from {Reference(from, diagramRoot)} to {Reference(to, diagramRoot)};")]);
                 }
 
             case NewRelation.Satisfy:
