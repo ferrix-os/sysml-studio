@@ -453,6 +453,7 @@ public sealed class WindowTests
                  {
                      (DiagramKind.Package, "Garage"),
                      (DiagramKind.Class, "Garage"),
+                     (DiagramKind.ObjectDiagram, "Garage"),
                  })
         {
             shell.Select(workspace.Find(root)!);
@@ -480,6 +481,7 @@ public sealed class WindowTests
                      {
                          (DiagramKind.Package, "DroneSoftware"),
                          (DiagramKind.Class, "DroneStructure"),
+                         (DiagramKind.ObjectDiagram, "DroneFleet"),
                      })
             {
                 shell.Select(shell.Workspace!.Find(root)!);

@@ -301,9 +301,33 @@ public sealed class DiagramTests
         Assert.DoesNotContain(diagram.Nodes, n => n.Label == "Safety");
     }
 
+    [Fact]
+    public void AnObjectDiagramUnderlinesInstancesWithTheirSlotsAndLinks()
+    {
+        var diagram = GarageDiagram(DiagramKind.ObjectDiagram, "Garage");
+        var mine = diagram.Nodes.Single(n => n.Label == "mine : MyLift");
+
+        Assert.Equal(NodeShape.Instance, mine.Shape);
+        Assert.Equal("«individual»", mine.Stereotype);
+        Assert.Contains("load = 2.5", mine.Features);
+
+        var hoist = diagram.Nodes.Single(n => n.Label == "hoist : Arm");
+        Assert.Contains("serial = \"H-1\"", hoist.Features);
+        Assert.Contains(diagram.Edges, e => e.Kind == RelationKind.Composition && e.Source == mine && e.Target == hoist);
+
+        // A value that names another object on the diagram is a link.
+        Assert.Contains(diagram.Edges, e => e.Kind == RelationKind.Link && e.Source == mine && e.Target.Label == "alice : Mechanic" && e.Label == "keeper");
+        Assert.DoesNotContain(mine.Features, f => f.StartsWith("keeper", StringComparison.Ordinal));
+
+        // A usage is an object because it binds values, not for being a usage.
+        Assert.Contains(diagram.Nodes, n => n.Label == "configured : Lift");
+        Assert.DoesNotContain(diagram.Nodes, n => n.Element.Name == "lift");
+    }
+
     [Theory]
     [InlineData(DiagramKind.Package, "Garage")]
     [InlineData(DiagramKind.Class, "Garage")]
+    [InlineData(DiagramKind.ObjectDiagram, "Garage")]
     public void EveryKindLaysOutWithNoOverlapAndNoEdgeThroughABox(DiagramKind kind, string root)
     {
         var diagram = GarageDiagram(kind, root);
@@ -335,6 +359,7 @@ public sealed class DiagramTests
     [InlineData(DiagramKind.Class, "Garage", "url(#diamond)")]
     [InlineData(DiagramKind.Class, "Garage", "url(#triangle)")]
     [InlineData(DiagramKind.Class, "Garage", "font-style=\"italic\"")]
+    [InlineData(DiagramKind.ObjectDiagram, "Garage", "text-decoration=\"underline\"")]
     public void TheSvgSaysWhatTheCanvasSays(DiagramKind kind, string root, string expected)
     {
         var diagram = GarageDiagram(kind, root);
@@ -360,6 +385,7 @@ public sealed class DiagramTests
     [Theory]
     [InlineData(DiagramKind.Package, "DroneSoftware")]
     [InlineData(DiagramKind.Class, "DroneStructure")]
+    [InlineData(DiagramKind.ObjectDiagram, "DroneFleet")]
     public void TheDroneSampleHasSomethingForEveryStructuralKind(DiagramKind kind, string root)
     {
         var element = SysmlWorkspace.Load(Path.Combine(AppContext.BaseDirectory, "Samples", "drone")).Find(root)!;

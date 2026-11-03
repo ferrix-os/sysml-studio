@@ -23,6 +23,9 @@ public static partial class DiagramBuilder
         "connection def", "interface def", "flow def", "allocation def", "individual def",
     ];
 
+    /// <summary>Usages that hold or stand for a thing, and so can be an object.</summary>
+    private static readonly HashSet<string> ObjectKinds = ["part", "item", "occurrence", "individual", "portion"];
+
     /// <summary>What the model says once, shared by every view of it, so that browsing a large model does not scan it per element.</summary>
     private static readonly ConditionalWeakTable<Element, StructuralIndex> Indexes = [];
 
@@ -40,11 +43,15 @@ public static partial class DiagramBuilder
                 kinds.Add(DiagramKind.Package);
             if (element.Children.Any(IsClassLike))
                 kinds.Add(DiagramKind.Class);
+            if (OutermostObjects(element).Any())
+                kinds.Add(DiagramKind.ObjectDiagram);
             return kinds;
         }
 
         if (IsClassLike(element))
             kinds.Add(DiagramKind.Class);
+        if (IsObject(element) || (element.IsDefinition && OutermostObjects(element).Any()))
+            kinds.Add(DiagramKind.ObjectDiagram);
         return kinds;
     }
 
@@ -214,6 +221,112 @@ public static partial class DiagramBuilder
             return type is null ? $"{p.Direction} {p.DisplayName}" : $"{p.Direction} {p.DisplayName} : {type.TargetReference.Trim()}";
         });
         return $"{Glyph(action)}{action.DisplayName}({string.Join(", ", parameters)})";
+    }
+
+    // ----- object -------------------------------------------------------------
+
+    /// <summary>
+    /// Individuals and usages with values bound, each an underlined "name :
+    /// Type" with its values in slots; what it holds is an object of its own,
+    /// joined by a composition link, and its connections are links.
+    /// </summary>
+    private static Diagram ObjectDiagram(Element root)
+    {
+        var diagram = new Diagram(DiagramKind.ObjectDiagram, root);
+        foreach (var element in IsObject(root) ? [root] : OutermostObjects(root))
+            AddObject(diagram, element);
+
+        foreach (var node in diagram.Nodes.ToList())
+        {
+            foreach (var connector in node.Element.Children.Where(IsConnector))
+            {
+                foreach (var relation in connector.Relations)
+                {
+                    var source = ObjectEnd(diagram, node.Element, relation.OriginReference);
+                    var target = ObjectEnd(diagram, node.Element, relation.TargetReference);
+                    if (source is not null && target is not null && !ReferenceEquals(source, target))
+                        diagram.Edges.Add(new DiagramEdge(source, target, RelationKind.Link, connector.Name));
+                }
+            }
+
+            // "ref pilot = alice": a slot whose value is another object on the diagram is a link.
+            foreach (var slot in node.Element.Children.Where(c => c.Kind == "ref" && c.Value is { Length: > 0 }))
+            {
+                var target = diagram.Nodes.Find(n => n.Element.Name == slot.Value);
+                if (target is null || ReferenceEquals(target, node))
+                    continue;
+
+                // UML shows it as a link or a slot, not both.
+                node.Features.Remove($"{SlotName(slot)} = {slot.Value}");
+                diagram.Edges.Add(new DiagramEdge(node, target, RelationKind.Link, SlotName(slot)));
+            }
+        }
+
+        return diagram;
+    }
+
+    private static DiagramNode AddObject(Diagram diagram, Element element)
+    {
+        if (diagram.NodeFor(element) is { } existing)
+            return existing;
+
+        var node = new DiagramNode(element, InstanceLabel(element), element.IsIndividual ? "«individual»" : null) { Shape = NodeShape.Instance };
+        foreach (var slot in element.Children.Where(HasBoundValue))
+            node.Features.Add($"{SlotName(slot)} = {slot.Value}");
+        diagram.Nodes.Add(node);
+
+        foreach (var held in element.Children.Where(IsHeldObject))
+        {
+            var child = AddObject(diagram, held);
+            diagram.Edges.Add(new DiagramEdge(node, child, RelationKind.Composition) { IsHeadless = true });
+        }
+
+        return node;
+    }
+
+    /// <summary>"unit7 : Drone", or ": Drone" for a usage with no name, or what it redefines.</summary>
+    private static string InstanceLabel(Element element)
+    {
+        var type = element.Relations.FirstOrDefault(r => r.Kind == RelationKind.Typing)
+            ?? element.Relations.FirstOrDefault(r => r.Kind == RelationKind.Specialization);
+        var name = element.Name ?? element.Relations.FirstOrDefault(r => r.Kind == RelationKind.Redefinition)?.TargetReference.Trim() ?? string.Empty;
+        var label = type is null ? name : $"{name} : {type.TargetReference.Trim()}";
+        return label + element.Multiplicity;
+    }
+
+    private static string SlotName(Element slot)
+        => slot.Name ?? slot.Relations.FirstOrDefault(r => r.Kind == RelationKind.Redefinition)?.TargetReference.Trim() ?? slot.DisplayName;
+
+    private static bool HasBoundValue(Element element) => element.Kind is "attribute" or "ref" && element.Value is { Length: > 0 };
+
+    /// <summary>A usage that stands for one thing: it says it is an individual, or says what its values are.</summary>
+    private static bool IsObject(Element element)
+        => element.IsIndividual || (ObjectKinds.Contains(element.Kind) && !element.IsDefinition && element.Children.Any(HasBoundValue));
+
+    /// <summary>What an object holds is an object too, written or not with values of its own.</summary>
+    private static bool IsHeldObject(Element element)
+        => ObjectKinds.Contains(element.Kind) && (element.Name is not null || element.Relations.Any(r => r.Kind == RelationKind.Redefinition));
+
+    /// <summary>The objects under an element, without those another object already holds.</summary>
+    private static IEnumerable<Element> OutermostObjects(Element root)
+    {
+        foreach (var child in root.Children)
+        {
+            if (IsObject(child))
+            {
+                yield return child;
+                continue;
+            }
+
+            foreach (var inner in OutermostObjects(child))
+                yield return inner;
+        }
+    }
+
+    private static DiagramNode? ObjectEnd(Diagram diagram, Element owner, string? reference)
+    {
+        var head = reference?.Trim().Split('.')[0].Split("::")[^1].Trim();
+        return head is null ? null : diagram.Nodes.Find(n => ReferenceEquals(n.Element.Parent, owner) && SlotName(n.Element) == head);
     }
 
     private static bool IsClassLike(Element element) => element.Name is not null && ClassKinds.Contains(element.Kind);
