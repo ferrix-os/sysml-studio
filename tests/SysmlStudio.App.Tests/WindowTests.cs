@@ -327,6 +327,8 @@ public sealed class WindowTests
                      (DiagramKind.Definition, "FerrixStructure::Kernel"),
                      (DiagramKind.Definition, "FerrixDrivers::DevMgr"),
                      (DiagramKind.Definition, "FerrixBoot"),
+                     (DiagramKind.Package, "FerrixLifecycle"),
+                     (DiagramKind.Package, "FerrixStructure"),
                  })
         {
             if (shell.Workspace!.Find(name) is not { } element)
@@ -436,6 +438,66 @@ public sealed class WindowTests
         Assert.Equal("Sample · Requirements", shell.DocumentCaption);
         var diagram = Assert.IsType<DiagramDocumentViewModel>(shell.ActiveDocument);
         Assert.Contains(diagram.Connections, c => c.Label == "satisfies");
+    }
+
+    /// <summary>Each structural UML kind opens as a document, with something in it.</summary>
+    [AvaloniaFact]
+    public void EveryStructuralKindOpensAsADocument()
+    {
+        var (window, shell) = Open(Path.Combine(AppContext.BaseDirectory, "UmlFixtures"));
+        var workspace = shell.Workspace!;
+
+        foreach (var (kind, root) in new[]
+                 {
+                     (DiagramKind.Package, "Garage"),
+                 })
+        {
+            shell.Select(workspace.Find(root)!);
+            Assert.True(shell.OpenDiagramCommand.CanExecute(kind), $"{kind} of {root}");
+            shell.OpenDiagramCommand.Execute(kind);
+            Settle();
+
+            Assert.Equal(kind, shell.ActiveKind);
+            Assert.NotEmpty(Assert.IsType<DiagramDocumentViewModel>(shell.ActiveDocument).Nodes);
+            Shoot(window, $"diagram-{kind}");
+        }
+    }
+
+    /// <summary>The structural UML kinds over the sample model the screenshots use, in both themes.</summary>
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void TheStructuralKindsDrawTheDroneSample(bool dark)
+    {
+        var (window, shell) = Open(Path.Combine(AppContext.BaseDirectory, "Samples", "drone"));
+        shell.IsDark = dark;
+        try
+        {
+            foreach (var (kind, root) in new[]
+                     {
+                         (DiagramKind.Package, "DroneSoftware"),
+                     })
+            {
+                shell.Select(shell.Workspace!.Find(root)!);
+                Assert.True(shell.OpenDiagramCommand.CanExecute(kind), $"{kind} of {root}");
+                shell.OpenDiagramCommand.Execute(kind);
+                Settle();
+
+                Assert.Equal(kind, shell.ActiveKind);
+                var diagram = Assert.IsType<DiagramDocumentViewModel>(shell.ActiveDocument);
+                Assert.NotEmpty(diagram.Nodes);
+                var name = $"uml-{(dark ? "dark" : "light")}-{kind}-{root.Replace("::", "-", StringComparison.Ordinal)}";
+                Shoot(window, name);
+
+                // And what the export writes of the same picture.
+                if (Environment.GetEnvironmentVariable("SYSML_STUDIO_SHOTS") is { Length: > 0 } folder)
+                    SvgExporter.Write(diagram.Diagram, Path.Combine(folder, name + ".svg"));
+            }
+        }
+        finally
+        {
+            shell.IsDark = false;
+        }
     }
 
     /// <summary>A kind added to the enum and left out of the switcher's table could never be reached.</summary>

@@ -240,6 +240,107 @@ public sealed class DiagramTests
         }
     }
 
+    // ----- the structural UML kinds --------------------------------------------
+
+    private static SysmlWorkspace Garage() =>
+        SysmlWorkspace.Load(Path.Combine(AppContext.BaseDirectory, "UmlFixtures"));
+
+    private static Diagram GarageDiagram(DiagramKind kind, string root) => DiagramBuilder.Build(kind, Garage().Find(root)!);
+
+    [Fact]
+    public void APackageDiagramDrawsNestingAndImportsAsUmlSaysThem()
+    {
+        var diagram = GarageDiagram(DiagramKind.Package, "Garage");
+
+        Assert.All(diagram.Nodes, n => Assert.Equal(NodeShape.Folder, n.Shape));
+        Assert.Contains(diagram.Edges, e => e.Kind == RelationKind.Containment && e.Source.Label == "Garage" && e.Target.Label == "Tools");
+        Assert.Contains(diagram.Edges, e => e.Kind == RelationKind.Import && e.Source.Label == "Garage" && e.Target.Label == "Parts" && e.Label == "«import»");
+        Assert.Contains(diagram.Edges, e => e.Kind == RelationKind.Import && e.Source.Label == "Garage" && e.Target.Label == "Helpers" && e.Label == "«access»");
+
+        // What is imported from outside the loaded model can only be named.
+        Assert.DoesNotContain(diagram.Nodes, n => n.Label == "ScalarValues");
+        Assert.Contains("«access» ScalarValues", diagram.Nodes.Single(n => n.Label == "Garage").Features);
+    }
+
+    [Fact]
+    public void APackageThatOnlyImportsWhatIsNotLoadedHasNoPackageDiagram()
+    {
+        var workspace = Garage();
+        Assert.DoesNotContain(DiagramKind.Package, DiagramBuilder.KindsFor(workspace.Find("Empty")!));
+        Assert.Contains(DiagramKind.Package, DiagramBuilder.KindsFor(workspace.Find("Parts")!));
+    }
+
+    [Theory]
+    [InlineData(DiagramKind.Package, "Garage")]
+    public void EveryKindLaysOutWithNoOverlapAndNoEdgeThroughABox(DiagramKind kind, string root)
+    {
+        var diagram = GarageDiagram(kind, root);
+        DiagramLayout.Apply(diagram);
+
+        foreach (var a in diagram.Nodes)
+        {
+            foreach (var b in diagram.Nodes.Where(o => !ReferenceEquals(o, a)))
+            {
+                var apart = a.X + a.Width <= b.X || b.X + b.Width <= a.X || a.Y + a.Height <= b.Y || b.Y + b.Height <= a.Y;
+                Assert.True(apart, $"'{a.Label}' overlaps '{b.Label}'");
+            }
+        }
+
+        foreach (var edge in diagram.Edges)
+        {
+            Assert.NotEmpty(edge.Waypoints);
+            foreach (var box in diagram.Nodes.Where(n => !ReferenceEquals(n, edge.Source) && !ReferenceEquals(n, edge.Target)))
+            {
+                var inside = edge.Waypoints.Any(p => p.X > box.X + 2 && p.X < box.X + box.Width - 2 && p.Y > box.Y + 2 && p.Y < box.Y + box.Height - 2);
+                Assert.False(inside, $"{edge} runs through {box.Label}");
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData(DiagramKind.Package, "Garage", "url(#containment)")]
+    [InlineData(DiagramKind.Package, "Garage", "«access»")]
+    public void TheSvgSaysWhatTheCanvasSays(DiagramKind kind, string root, string expected)
+    {
+        var diagram = GarageDiagram(kind, root);
+        DiagramLayout.Apply(diagram);
+
+        var svg = SvgExporter.ToSvg(diagram);
+        Assert.Contains(expected, svg, StringComparison.Ordinal);
+        _ = System.Xml.Linq.XDocument.Parse(svg); // and it is well formed
+    }
+
+    [Theory]
+    [InlineData("structure")]
+    [InlineData("deployment")]
+    [InlineData("fleet")]
+    [InlineData("lifecycle")]
+    public void TheDroneSampleStillParses(string file)
+    {
+        var workspace = SysmlWorkspace.Load(Path.Combine(AppContext.BaseDirectory, "Samples", "drone"));
+        var source = workspace.Files.Single(f => Path.GetFileNameWithoutExtension(f.Path) == file);
+        Assert.Empty(source.Errors);
+    }
+
+    [Theory]
+    [InlineData(DiagramKind.Package, "DroneSoftware")]
+    public void TheDroneSampleHasSomethingForEveryStructuralKind(DiagramKind kind, string root)
+    {
+        var element = SysmlWorkspace.Load(Path.Combine(AppContext.BaseDirectory, "Samples", "drone")).Find(root)!;
+        Assert.Contains(kind, DiagramBuilder.KindsFor(element));
+
+        var diagram = DiagramBuilder.Build(kind, element);
+        Assert.NotEmpty(diagram.Nodes);
+        Assert.NotEmpty(diagram.Edges);
+    }
+
+    [Fact]
+    public void TheUmlKindsComeAfterTheSysmlOnes()
+    {
+        var kinds = DiagramBuilder.KindsFor(Fixture().Find("Sample")!);
+        Assert.Equal(DiagramKind.Definition, kinds[0]);
+    }
+
     private static Diagram Drone(DiagramKind kind, string root)
         => DiagramBuilder.Build(kind, SysmlWorkspace.Load(Path.Combine(AppContext.BaseDirectory, "Samples", "drone")).Find(root)!);
 
