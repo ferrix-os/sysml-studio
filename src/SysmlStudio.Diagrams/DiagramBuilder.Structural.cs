@@ -47,6 +47,8 @@ public static partial class DiagramBuilder
                 kinds.Add(DiagramKind.ObjectDiagram);
             if (element.Children.Any(c => IsComponent(c)))
                 kinds.Add(DiagramKind.Component);
+            if (index.Allocations.Exists(a => a.TouchesPackage(element)))
+                kinds.Add(DiagramKind.Deployment);
             return kinds;
         }
 
@@ -58,6 +60,8 @@ public static partial class DiagramBuilder
             kinds.Add(DiagramKind.Component);
         if ((element.IsDefinition || IsTypedUsage(element)) && element.Children.Any(IsInternalPart))
             kinds.Add(DiagramKind.CompositeStructure);
+        if (index.Allocations.Exists(a => a.Touches(element)))
+            kinds.Add(DiagramKind.Deployment);
         return kinds;
     }
 
@@ -556,6 +560,65 @@ public static partial class DiagramBuilder
 
     private static bool IsInternalPart(Element element) => element.Kind is "part" or "item" or "occurrence" or "ref" && element.Name is not null;
 
+    // ----- deployment ---------------------------------------------------------
+
+    /// <summary>
+    /// What is allocated to what: the elements that receive an allocation are
+    /// nodes, the elements allocated are artifacts, and each allocation is a
+    /// "deploy" arrow. Connections the model writes between two nodes are their
+    /// communication paths.
+    /// </summary>
+    private static Diagram DeploymentDiagram(Element root)
+    {
+        var diagram = new Diagram(DiagramKind.Deployment, root);
+        var index = IndexOf(root);
+        var allocations = index.Allocations.Where(a => IsPackage(root) ? a.TouchesPackage(root) : a.Touches(root)).ToList();
+
+        var allocated = allocations.Select(a => a.From).ToHashSet();
+        foreach (var element in allocations.SelectMany(a => new[] { a.From, a.To }).Distinct())
+        {
+            diagram.Nodes.Add(allocated.Contains(element)
+                ? new DiagramNode(element, UsageLabel(element), "«artifact»") { Shape = NodeShape.Artifact }
+                : new DiagramNode(element, UsageLabel(element), "«node»") { Shape = NodeShape.Device });
+        }
+
+        foreach (var allocation in allocations)
+        {
+            var from = diagram.NodeFor(allocation.From)!;
+            var to = diagram.NodeFor(allocation.To)!;
+            if (!ReferenceEquals(from, to))
+                diagram.Edges.Add(new DiagramEdge(from, to, RelationKind.Allocate, "«deploy»") { Name = allocation.Name });
+        }
+
+        foreach (var connector in index.Connectors)
+        {
+            foreach (var relation in connector.Relations)
+            {
+                var source = CommunicationEnd(diagram, connector, relation.OriginReference);
+                var target = CommunicationEnd(diagram, connector, relation.TargetReference);
+                if (source is not null && target is not null && !ReferenceEquals(source, target))
+                    diagram.Edges.Add(new DiagramEdge(source, target, RelationKind.Link, connector.Name));
+            }
+        }
+
+        return diagram;
+    }
+
+    private static DiagramNode? CommunicationEnd(Diagram diagram, Element connector, string? reference)
+    {
+        var head = reference?.Trim().Split('.')[0].Split("::")[^1].Trim();
+        return head is null
+            ? null
+            : diagram.Nodes.Find(n => n.Shape == NodeShape.Device && n.Element.Name == head && ReferenceEquals(n.Element.Parent, connector.Parent));
+    }
+
+    /// <summary>"fc : FlightController", or the name alone where nothing types it.</summary>
+    private static string UsageLabel(Element element)
+    {
+        var typing = element.Relations.FirstOrDefault(r => r.Kind == RelationKind.Typing);
+        return typing is null ? element.DisplayName : $"{element.DisplayName} : {typing.TargetReference.Trim()}{element.Multiplicity}";
+    }
+
     private static bool IsClassLike(Element element) => element.Name is not null && ClassKinds.Contains(element.Kind);
 
     /// <summary>
@@ -680,5 +743,11 @@ public static partial class DiagramBuilder
     private sealed record PackageImport(string Name, Element? Target, bool IsPublic);
 
     /// <summary>One end-to-end allocation, and the element that declares it.</summary>
-    private sealed record Allocation(Element From, Element To, Element Declaring, string? Name);
+    private sealed record Allocation(Element From, Element To, Element Declaring, string? Name)
+    {
+        public bool TouchesPackage(Element package)
+            => Contains(package, Declaring) || Contains(package, From) || Contains(package, To);
+
+        public bool Touches(Element element) => Contains(element, From) || Contains(element, To);
+    }
 }

@@ -400,12 +400,41 @@ public sealed class DiagramTests
         Assert.Equal(edge.Target.Y + edge.TargetPort.Y, y, 0.01 + 5);
     }
 
+    [Fact]
+    public void ADeploymentDiagramPutsArtifactsOnNodes()
+    {
+        var diagram = GarageDiagram(DiagramKind.Deployment, "Garage");
+
+        var lift = diagram.Nodes.Single(n => n.Label == "lift : Lift");
+        var jack = diagram.Nodes.Single(n => n.Label == "Jack");
+        Assert.Equal(NodeShape.Device, lift.Shape);
+        Assert.Equal(NodeShape.Artifact, jack.Shape);
+        Assert.Equal("«node»", lift.Stereotype);
+
+        var deploy = Assert.Single(diagram.Edges, e => e.Source == jack);
+        Assert.Equal(RelationKind.Allocate, deploy.Kind);
+        Assert.Equal("«deploy»", deploy.Label);
+        Assert.Equal(lift, deploy.Target);
+        Assert.Contains(diagram.Edges, e => e.Name == "armOn" && e.Source.Label == "Arm");
+    }
+
+    [Fact]
+    public void AnElementWithNoAllocationHasNoDeploymentDiagram()
+    {
+        var workspace = Garage();
+        Assert.DoesNotContain(DiagramKind.Deployment, DiagramBuilder.KindsFor(workspace.Find("Garage::Quiet")!));
+        Assert.Contains(DiagramKind.Deployment, DiagramBuilder.KindsFor(workspace.Find("Garage::Workshop")!));
+        Assert.Contains(DiagramKind.Deployment, DiagramBuilder.KindsFor(workspace.Find("Garage")!));
+        Assert.DoesNotContain(DiagramKind.Deployment, DiagramBuilder.KindsFor(workspace.Find("Helpers")!));
+    }
+
     [Theory]
     [InlineData(DiagramKind.Package, "Garage")]
     [InlineData(DiagramKind.Class, "Garage")]
     [InlineData(DiagramKind.ObjectDiagram, "Garage")]
     [InlineData(DiagramKind.Component, "Garage")]
     [InlineData(DiagramKind.CompositeStructure, "Garage::Workshop")]
+    [InlineData(DiagramKind.Deployment, "Garage")]
     public void EveryKindLaysOutWithNoOverlapAndNoEdgeThroughABox(DiagramKind kind, string root)
     {
         var diagram = GarageDiagram(kind, root);
@@ -442,6 +471,8 @@ public sealed class DiagramTests
     [InlineData(DiagramKind.Component, "Garage", "<circle")]
     [InlineData(DiagramKind.CompositeStructure, "Garage::Workshop", "stroke-dasharray=\"4 3\"")]
     [InlineData(DiagramKind.CompositeStructure, "Garage::Workshop", ">Workshop</text>")]
+    [InlineData(DiagramKind.Deployment, "Garage", "«deploy»")]
+    [InlineData(DiagramKind.Deployment, "Garage", "«node»")]
     public void TheSvgSaysWhatTheCanvasSays(DiagramKind kind, string root, string expected)
     {
         var diagram = GarageDiagram(kind, root);
@@ -493,6 +524,7 @@ public sealed class DiagramTests
     [InlineData(DiagramKind.ObjectDiagram, "DroneFleet")]
     [InlineData(DiagramKind.Component, "DroneStructure")]
     [InlineData(DiagramKind.CompositeStructure, "DroneStructure::Drone")]
+    [InlineData(DiagramKind.Deployment, "DroneSoftware")]
     public void TheDroneSampleHasSomethingForEveryStructuralKind(DiagramKind kind, string root)
     {
         var element = SysmlWorkspace.Load(Path.Combine(AppContext.BaseDirectory, "Samples", "drone")).Find(root)!;
