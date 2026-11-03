@@ -16,6 +16,57 @@ public sealed class IndexTests
     private static SysmlWorkspace Fixture() =>
         SysmlWorkspace.Load(Path.Combine(AppContext.BaseDirectory, "Fixtures"));
 
+    private static SysmlWorkspace Garage() =>
+        SysmlWorkspace.Load(Path.Combine(AppContext.BaseDirectory, "UmlFixtures"));
+
+    [Fact]
+    public void ThePrefixWordsAreRead()
+    {
+        var workspace = Garage();
+
+        Assert.True(workspace.Find("Garage::Machine")!.IsAbstract);
+        Assert.False(workspace.Find("Garage::Lift")!.IsAbstract);
+        Assert.True(workspace.Find("Garage::MyLift")!.IsIndividual);
+        Assert.True(workspace.Find("Garage::mine")!.IsIndividual);
+        Assert.False(workspace.Find("Garage::configured")!.IsIndividual);
+        Assert.Equal("in", workspace.Find("Garage::Machine::start::key")!.Direction);
+        Assert.Equal("out", workspace.Find("Garage::Mains::amps")!.Direction);
+        Assert.Equal("private", workspace.Find("Garage::Lift::hours")!.Visibility);
+        Assert.Null(workspace.Find("Garage::Lift::load")!.Visibility);
+        Assert.Equal(["petrol", "diesel"], workspace.Find("Garage::Fuel")!.EnumeratedValues);
+    }
+
+    [Fact]
+    public void AConjugatedPortIsTypedByItsDefinitionTurnedRound()
+    {
+        var workspace = Garage();
+        var typing = Assert.Single(workspace.Find("Garage::Lift::supply")!.Relations, r => r.Kind == RelationKind.Typing);
+
+        Assert.True(typing.IsConjugated);
+        Assert.Same(workspace.Find("Garage::Mains"), typing.Target);
+        Assert.False(Assert.Single(workspace.Find("Garage::Socket::out1")!.Relations, r => r.Kind == RelationKind.Typing).IsConjugated);
+    }
+
+    [Fact]
+    public void AnImportSaysWhetherItIsPublic()
+    {
+        var imports = Garage().Find("Garage")!.Relations.Where(r => r.Kind == RelationKind.Import).ToList();
+
+        Assert.Equal("public", imports.Single(i => i.TargetReference == "Parts::*").Label);
+        Assert.Equal("private", imports.Single(i => i.TargetReference == "Helpers::*").Label);
+    }
+
+    [Fact]
+    public void MetadataIsReadForWhichDefinitionItAppliesAndToWhat()
+    {
+        var workspace = Garage();
+
+        Assert.Equal("Safety", Assert.Single(workspace.Find("Garage::Lift")!.MetadataUses).TypeName);
+        var about = Assert.Single(workspace.Find("Garage")!.MetadataUses);
+        Assert.Equal("Safety", about.TypeName);
+        Assert.Equal(["Mechanic"], about.About);
+    }
+
     [Fact]
     public void FixtureParsesWithoutErrors()
     {

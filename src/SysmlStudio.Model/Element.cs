@@ -56,7 +56,24 @@ public enum RelationKind
 
     /// <summary>"import P::*".</summary>
     Import,
+
+    /// <summary>Drawn only: a reference feature, "ref x : T", as UML's navigable association.</summary>
+    Association,
+
+    /// <summary>Drawn only: a package nested in a package, with UML's crossed circle at the owner.</summary>
+    Containment,
+
+    /// <summary>Drawn only: what a stereotype extends, with UML's filled triangle.</summary>
+    Extension,
+
+    /// <summary>Drawn only: a plain line between two objects or two nodes.</summary>
+    Link,
 }
+
+/// <summary>Metadata applied to an element: "#Safety", "@Safety { ... }", "metadata Safety about X, Y".</summary>
+/// <param name="TypeName">The metadata definition, as written.</param>
+/// <param name="About">The elements it is applied to, as written; empty means the element that holds it.</param>
+public sealed record MetadataUse(string TypeName, IReadOnlyList<string> About);
 
 /// <summary>
 /// One edge of the model. <see cref="TargetReference"/> is the text as written;
@@ -89,6 +106,9 @@ public sealed class Relation(RelationKind kind, Element source, string targetRef
 
     /// <summary>Where the origin reference is written, for rename.</summary>
     public TextSpan? OriginSpan { get; init; }
+
+    /// <summary>A typing written "~PortDef": the port is the definition with its directions turned round.</summary>
+    public bool IsConjugated { get; init; }
 
     /// <summary>Where the arrow starts: the resolved origin, or else the element that declares it.</summary>
     public Element? From => OriginReference is null ? Source : Origin;
@@ -126,6 +146,24 @@ public sealed class Element
 
     /// <summary>Prefix keywords such as "#implemented" and bodies such as "@stage { number = 3; }".</summary>
     public List<string> Metadata { get; } = [];
+
+    /// <summary>The same metadata, read: which definition each one applies, and to what.</summary>
+    public List<MetadataUse> MetadataUses { get; } = [];
+
+    /// <summary>"abstract" is written before it.</summary>
+    public bool IsAbstract { get; internal set; }
+
+    /// <summary>"individual" is written before it: it stands for one thing, not a kind of thing.</summary>
+    public bool IsIndividual { get; internal set; }
+
+    /// <summary>"in", "out" or "inout" as written before it, or null.</summary>
+    public string? Direction { get; internal set; }
+
+    /// <summary>"public", "private" or "protected" as written before it, or null where nothing is.</summary>
+    public string? Visibility { get; internal set; }
+
+    /// <summary>The values an enumeration lists, by name.</summary>
+    public List<string> EnumeratedValues { get; } = [];
 
     /// <summary>Where the declared name is written, for rename.</summary>
     public TextSpan? NameSpan { get; internal set; }

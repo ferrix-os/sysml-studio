@@ -56,6 +56,13 @@ public static class ModelIndexer
         ["emptySuccessionMember"] = "succession",
     };
 
+    /// <summary>The rules that hold the words written before an element's keyword.</summary>
+    private static readonly HashSet<string> PrefixRules =
+    [
+        "definitionPrefix", "occurrenceDefinitionPrefix", "basicDefinitionPrefix",
+        "usagePrefix", "occurrenceUsagePrefix", "unextendedUsagePrefix", "basicUsagePrefix", "refPrefix", "featureDirection",
+    ];
+
     /// <summary>Indexes one file under <paramref name="root"/>.</summary>
     public static void Index(SourceFile file, Element root)
     {
@@ -75,7 +82,12 @@ public static class ModelIndexer
             {
                 var imported = FindShallow(ctx, "importDeclaration").FirstOrDefault();
                 if (imported is not null)
-                    parent.Add(Relate(RelationKind.Import, parent, imported));
+                {
+                    // The label is what the import says of itself; written with no word it is private.
+                    var visibility = FindShallow(ctx, "visibilityIndicator").FirstOrDefault()?.GetText() ?? "private";
+                    parent.Add(Relate(RelationKind.Import, parent, imported, visibility));
+                }
+
                 continue;
             }
 
@@ -216,11 +228,18 @@ public static class ModelIndexer
         {
             var keyword = Written(meta).TrimStart('#').Trim();
             element.Metadata.Add("#" + keyword);
+            element.MetadataUses.Add(new MetadataUse(keyword, []));
             element.PrefixSpans.Add((keyword, Span(meta)));
         }
 
         foreach (var meta in FindShallow(ctx, "metadataFeature"))
+        {
             element.Metadata.Add(Written(meta).Trim());
+            if (FindShallow(meta, "ownedFeatureTyping").FirstOrDefault() is { } type)
+                element.MetadataUses.Add(new MetadataUse(Written(type).Trim(), [.. FindShallow(meta, "annotation").Select(a => Written(a).Trim())]));
+        }
+
+        ReadPrefix(element, ctx);
 
         foreach (var doc in FindShallow(ctx, "documentation"))
         {
@@ -238,6 +257,49 @@ public static class ModelIndexer
             element.Value = Written(value).TrimStart('=').Trim();
 
         ReadRelations(element, ctx);
+    }
+
+    /// <summary>The words written before an element's keyword, and the visibility written before those.</summary>
+    private static void ReadPrefix(Element element, ParserRuleContext ctx)
+    {
+        var words = new List<string>();
+        CollectPrefixWords(ctx, words);
+        element.IsAbstract = words.Contains("abstract");
+        element.IsIndividual = words.Contains("individual");
+        element.Direction = words.Find(w => w is "in" or "out" or "inout");
+
+        // Visibility belongs to the membership, which wraps the element.
+        for (var outer = ctx.Parent as ParserRuleContext; outer is not null && !TryKind(RuleName(outer), out _); outer = outer.Parent as ParserRuleContext)
+        {
+            var prefix = outer.children?.OfType<ParserRuleContext>().FirstOrDefault(c => RuleName(c) == "memberPrefix");
+            if (prefix is null)
+                continue;
+
+            var written = prefix.GetText();
+            element.Visibility = written.Length == 0 ? null : written;
+            break;
+        }
+
+        foreach (var value in FindShallow(ctx, "enumeratedValue"))
+        {
+            var names = FindShallow(value, "identification").FirstOrDefault() is { } identification
+                ? FindShallow(identification, "name")
+                : [];
+            if (names.Count > 0)
+                element.EnumeratedValues.Add(Unquote(names[^1].GetText())!);
+        }
+    }
+
+    /// <summary>The keywords of a context, and of the prefix rules directly under it.</summary>
+    private static void CollectPrefixWords(ParserRuleContext ctx, List<string> words)
+    {
+        foreach (var child in ctx.children ?? [])
+        {
+            if (child is ITerminalNode terminal)
+                words.Add(terminal.GetText());
+            else if (child is ParserRuleContext rule && PrefixRules.Contains(RuleName(rule)))
+                CollectPrefixWords(rule, words);
+        }
     }
 
     private static void ReadIdentification(Element element, ParserRuleContext identification)
@@ -265,6 +327,14 @@ public static class ModelIndexer
         {
             foreach (var typing in FindShallow(part, "ownedFeatureTyping"))
                 element.Add(Relate(RelationKind.Typing, element, typing));
+
+            // "port p : ~Fuel" is typed by Fuel, turned round.
+            foreach (var typing in FindShallow(part, "conjugatedPortTyping"))
+            {
+                if (FindShallow(typing, "qualifiedName").FirstOrDefault() is { } target)
+                    element.Add(new Relation(RelationKind.Typing, element, Written(target)) { TargetSpan = Span(target), IsConjugated = true });
+            }
+
             foreach (var subset in FindShallow(part, "ownedSubsetting"))
                 element.Add(Relate(RelationKind.Specialization, element, subset));
             foreach (var redef in FindShallow(part, "ownedRedefinition"))
