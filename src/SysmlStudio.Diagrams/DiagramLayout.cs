@@ -274,11 +274,18 @@ public static class DiagramLayout
             edge.LabelCentre = null;
         }
 
-        if (diagram.Nodes.Count == 0 || diagram.Edges.Count == 0)
+        if (diagram.Nodes.Count == 0)
             return;
+
+        if (diagram.Edges.Count == 0)
+        {
+            PortPlacement.Apply(diagram);
+            return;
+        }
 
         RouteAround(diagram, kept);
         SpreadParallelEdges(diagram);
+        PortPlacement.Apply(diagram);
         KeepLabelsClear(diagram);
     }
 
@@ -721,6 +728,12 @@ public static class DiagramLayout
     /// <summary>A box as the canvas will draw it: header, then one line per feature.</summary>
     public static void Measure(DiagramNode node)
     {
+        if (node.Shape != NodeShape.Box)
+        {
+            MeasureUml(node);
+            return;
+        }
+
         if (node.IsPseudo)
         {
             node.Width = node.Height = 26;
@@ -734,6 +747,54 @@ public static class DiagramLayout
         node.Width = Math.Clamp(Math.Max(Math.Max(caption, title), features) + BoxChrome, 150, 460);
         node.Height = 2 + HeaderHeight + (node.Features.Count == 0 ? 0 : CompartmentChrome + (node.Features.Count * FeatureLine));
     }
+
+    /// <summary>
+    /// A box in UML's shapes, as the canvas draws it: stereotype and name
+    /// centred, a compartment each for what it lists, a band along the top and
+    /// the bottom for the names of its ports, and whatever the shape adds outside
+    /// its body: a folder's tab, a node's depth.
+    /// </summary>
+    private static void MeasureUml(DiagramNode node)
+    {
+        var stereotype = (node.Stereotype?.Length ?? 0) * 6.4;
+        var title = node.Label.Length * TitleCharacter;
+        var lines = node.Features.Concat(node.Operations).ToList();
+        var features = lines.Count == 0 ? 0 : lines.Max(f => f.Length) * MonoCharacter;
+        var icon = node.Shape is NodeShape.Component or NodeShape.Artifact ? 44 : 0;
+        var ports = node.Ports.Sum(p => p.LabelWidth + 18) + 24;
+
+        node.Width = Math.Max(Math.Clamp(Math.Max(Math.Max(stereotype + icon, title + icon), features) + BoxChrome, 130, 460), ports)
+            + (node.Shape == NodeShape.Device ? NodeDepth : 0);
+        node.Height = 2 + UmlHeader
+            + (node.Stereotype is null ? 0 : UmlStereotype)
+            + (node.Features.Count == 0 ? 0 : CompartmentChrome + (node.Features.Count * FeatureLine))
+            + (node.Operations.Count == 0 ? 0 : CompartmentChrome + (node.Operations.Count * FeatureLine))
+            + (node.Ports.Count == 0 ? 0 : 2 * PortBand)
+            + node.Shape switch
+            {
+                NodeShape.Folder => FolderTab,
+                NodeShape.Device => NodeDepth,
+                _ => 0,
+            };
+    }
+
+    /// <summary>The name's line with its margins.</summary>
+    private const double UmlHeader = 40;
+
+    /// <summary>The stereotype's line above the name.</summary>
+    private const double UmlStereotype = 17;
+
+    /// <summary>The band inside a box's top and bottom border that holds the names of its ports.</summary>
+    public const double PortBand = 24;
+
+    /// <summary>The height of a folder's tab.</summary>
+    public const double FolderTab = 16;
+
+    /// <summary>The width of a folder's tab: as wide as a short name, never most of the folder.</summary>
+    public static double FolderTabWidth(double folderWidth) => Math.Min(72, folderWidth / 2);
+
+    /// <summary>How far a node's depth reaches up and to the right.</summary>
+    public const double NodeDepth = 10;
 
     private const double LabelHeight = 14;
 

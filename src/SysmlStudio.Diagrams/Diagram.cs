@@ -42,6 +42,66 @@ public enum DiagramKind
     Profile,
 }
 
+/// <summary>What a box looks like, where UML has a shape for what it stands for.</summary>
+public enum NodeShape
+{
+    /// <summary>The studio's own box: caption, title, features.</summary>
+    Box,
+
+    /// <summary>UML's class: name above, then a compartment each for attributes and operations.</summary>
+    Class,
+
+    /// <summary>UML's package: a folder with a tab.</summary>
+    Folder,
+
+    /// <summary>UML's instance: an underlined "name : Type", with value slots.</summary>
+    Instance,
+
+    /// <summary>UML's component: a box with the component icon, and its ports on the border.</summary>
+    Component,
+
+    /// <summary>UML's node: a box with depth.</summary>
+    Device,
+
+    /// <summary>UML's artifact: a box with the document icon.</summary>
+    Artifact,
+}
+
+/// <summary>What a port offers the outside, which UML draws as a ball or a socket.</summary>
+public enum PortFlow
+{
+    /// <summary>A plain square: the model does not say.</summary>
+    None,
+
+    /// <summary>The ball: what flows through it flows out.</summary>
+    Provided,
+
+    /// <summary>The socket: what flows through it flows in.</summary>
+    Required,
+}
+
+/// <summary>
+/// A port on a box's border. The layout decides where along the border it sits,
+/// from where its connectors arrive; <see cref="X"/> and <see cref="Y"/> are the
+/// centre of its square, relative to the box.
+/// </summary>
+public sealed class DiagramPort(string name, PortFlow flow = PortFlow.None)
+{
+    public string Name { get; } = name;
+    public PortFlow Flow { get; } = flow;
+
+    /// <summary>On the box's top border; otherwise on its bottom one.</summary>
+    public bool OnTop { get; set; }
+
+    public double X { get; set; }
+    public double Y { get; set; }
+
+    /// <summary>How wide the name is drawn, centred under the square.</summary>
+    public double LabelWidth => (Name.Length * 6.7) + 6;
+
+    public override string ToString() => Name;
+}
+
 /// <summary>One box. <see cref="Element"/> is what it stands for in the model.</summary>
 public sealed class DiagramNode(Element element, string label, string? stereotype = null, string? pseudo = null)
 {
@@ -69,6 +129,21 @@ public sealed class DiagramNode(Element element, string label, string? stereotyp
     /// <summary>The feature lines shown in the node's lower compartment.</summary>
     public List<string> Features { get; } = [];
 
+    /// <summary>The shape UML gives it; <see cref="NodeShape.Box"/> unless a UML diagram says otherwise.</summary>
+    public NodeShape Shape { get; init; }
+
+    /// <summary>A class's operations, in a compartment of their own under <see cref="Features"/>.</summary>
+    public List<string> Operations { get; } = [];
+
+    /// <summary>The ports drawn on its border.</summary>
+    public List<DiagramPort> Ports { get; } = [];
+
+    /// <summary>Whether the name is set in italics, as UML sets anything abstract.</summary>
+    public bool IsAbstract => Pseudo is null && Element.IsAbstract;
+
+    /// <summary>Whether it stands for a reference, which UML draws with a dashed border.</summary>
+    public bool IsReference { get; init; }
+
     public double X { get; set; }
     public double Y { get; set; }
     public double Width { get; set; }
@@ -87,6 +162,15 @@ public sealed class DiagramEdge(DiagramNode source, DiagramNode target, Relation
 
     /// <summary>The name of the relation itself, when it has one and the label says something else.</summary>
     public string? Name { get; init; }
+
+    /// <summary>Drawn with no arrowhead: a composition whose diamond already says which way it reads.</summary>
+    public bool IsHeadless { get; init; }
+
+    /// <summary>The port it leaves from, where the model names one.</summary>
+    public DiagramPort? SourcePort { get; init; }
+
+    /// <summary>The port it arrives at, where the model names one.</summary>
+    public DiagramPort? TargetPort { get; init; }
 
     /// <summary>The route found around the boxes and, where cheap, around other edges, in the same coordinates as the nodes.</summary>
     public List<(double X, double Y)> Waypoints { get; } = [];
@@ -118,4 +202,25 @@ public sealed class Diagram(DiagramKind kind, Element root)
     public DiagramNode? NodeFor(Element element) => Nodes.Find(n => !n.IsPseudo && ReferenceEquals(n.Element, element));
 
     public DiagramNode? PseudoNode(string pseudo) => Nodes.Find(n => n.Pseudo == pseudo);
+
+    /// <summary>What the frame around the whole picture says; null for no frame.</summary>
+    public string? FrameLabel { get; set; }
+
+    /// <summary>
+    /// The frame's rectangle, around every box and edge. It follows the
+    /// picture, so it is worked out when asked for, never stored.
+    /// </summary>
+    public (double X, double Y, double Width, double Height)? FrameBounds()
+    {
+        if (FrameLabel is null || Nodes.Count == 0)
+            return null;
+
+        const double side = 36, top = 50, bottom = 36;
+        var points = Edges.SelectMany(e => e.Waypoints).ToList();
+        var left = Math.Min(Nodes.Min(n => n.X), points.Count == 0 ? double.MaxValue : points.Min(p => p.X)) - side;
+        var right = Math.Max(Nodes.Max(n => n.X + n.Width), points.Count == 0 ? double.MinValue : points.Max(p => p.X)) + side;
+        var up = Math.Min(Nodes.Min(n => n.Y), points.Count == 0 ? double.MaxValue : points.Min(p => p.Y)) - top;
+        var down = Math.Max(Nodes.Max(n => n.Y + n.Height), points.Count == 0 ? double.MinValue : points.Max(p => p.Y)) + bottom;
+        return (left, up, right - left, down - up);
+    }
 }

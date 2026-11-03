@@ -44,11 +44,20 @@ public static class FitToScreen
         var extent = editor.ItemsExtent;
         if (extent.Width > 0 && extent.Height > 0 && editor.Bounds.Width > 0)
         {
+            // A frame round the whole picture is part of what has to fit.
+            if (editor.DataContext is DiagramDocumentViewModel { Diagram: var diagram } && diagram.FrameBounds() is { } frame)
+                extent = extent.Union(new Rect(frame.X, frame.Y, frame.Width, frame.Height));
+
             // The side panels float over the canvas: the diagram is framed in
             // what they leave clear, padded so nothing lands under the floating
-            // toolbar or the zoom figure either.
+            // toolbar or the zoom figure either. Those are sizes on the screen,
+            // so they are as many of the diagram's units as the zoom makes them.
             var insets = (TopLevel.GetTopLevel(editor)?.DataContext as ShellViewModel)?.CanvasInsets ?? default;
-            editor.FitToScreen(extent.Inflate(new Thickness(56 + insets.Left, 48, 56 + insets.Right, 96)));
+            var clear = new Thickness(56 + insets.Left, 48, 56 + insets.Right, 96);
+            var zoom = Math.Clamp(Math.Min(
+                (editor.Bounds.Width - clear.Left - clear.Right) / extent.Width,
+                (editor.Bounds.Height - clear.Top - clear.Bottom) / extent.Height), 0.1, 1);
+            editor.FitToScreen(extent.Inflate(new Thickness(clear.Left / zoom, clear.Top / zoom, clear.Right / zoom, clear.Bottom / zoom)));
 
             // A small diagram fitted to a big canvas would be drawn at 300 per cent.
             // Nothing is shown larger than life: it is centred at 100 instead.

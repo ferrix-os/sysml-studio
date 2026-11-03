@@ -105,8 +105,9 @@ public sealed partial class DiagramDocumentView : UserControl
     /// </summary>
     private void MeasureWhenDrawn(DiagramDocumentViewModel vm, int attemptsLeft)
     {
+        // The editor is reused between tabs: only this diagram's boxes count, not the last one's.
         var containers = Editor.GetVisualDescendants().OfType<ItemContainer>()
-            .Where(c => c.DataContext is DiagramNodeViewModel && c.Bounds.Height > 0)
+            .Where(c => c.DataContext is DiagramNodeViewModel node && vm.Nodes.Contains(node) && c.Bounds.Height > 0)
             .ToList();
 
         if (containers.Count < vm.Nodes.Count)
@@ -116,9 +117,11 @@ public sealed partial class DiagramDocumentView : UserControl
             return;
         }
 
+        // Frames it either way, once the editor has had a pass to take in where
+        // the boxes now are: until then its extent is the last diagram's.
         var sizes = containers.ToDictionary(c => (DiagramNodeViewModel)c.DataContext!, c => c.Bounds.Size);
-        if (vm.ApplyMeasuredSizes(sizes))
-            FitToScreen.Fit(Editor);
+        vm.ApplyMeasuredSizes(sizes);
+        DispatcherTimer.RunOnce(() => FitToScreen.Fit(Editor), TimeSpan.FromMilliseconds(50));
     }
 
     private void RenderPng(string path)

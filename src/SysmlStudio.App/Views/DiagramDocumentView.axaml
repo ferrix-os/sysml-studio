@@ -40,6 +40,22 @@
     <Style Selector="Path.tail">
       <Setter Property="Fill" Value="{DynamicResource EdgeBrush}" />
     </Style>
+    <Style Selector="Path.anchor">
+      <Setter Property="Fill" Value="{DynamicResource CanvasBrush}" />
+      <Setter Property="Stroke" Value="{DynamicResource EdgeBrush}" />
+      <Setter Property="StrokeThickness" Value="1.2" />
+    </Style>
+    <!-- A compartment of a UML box: a line above it, then its entries. -->
+    <Style Selector="Border.compartment">
+      <Setter Property="BorderBrush" Value="{DynamicResource BorderStrongBrush}" />
+      <Setter Property="BorderThickness" Value="0,1,0,0" />
+      <Setter Property="Padding" Value="12,7,12,9" />
+    </Style>
+    <Style Selector="Path.shape-line">
+      <Setter Property="Stroke" Value="{DynamicResource TextMutedBrush}" />
+      <Setter Property="StrokeThickness" Value="1.1" />
+      <Setter Property="Fill" Value="{DynamicResource SurfaceRaisedBrush}" />
+    </Style>
     <Style Selector="Path.ports">
       <Setter Property="Fill" Value="{DynamicResource SurfaceRaisedBrush}" />
       <Setter Property="Stroke" Value="{DynamicResource EdgeBrush}" />
@@ -52,6 +68,7 @@
                          ContextRequested="OnContextRequested"
                          ItemsSource="{Binding Nodes}"
                          Connections="{Binding Connections}"
+                         Decorators="{Binding Frames}"
                          ViewportZoom="{Binding Zoom, Mode=TwoWay}"
                          GridCellSize="8"
                          ItemsDragCompletedCommand="{Binding DragCompletedCommand}"
@@ -84,12 +101,102 @@
           <Setter Property="HighlightBrush" Value="Transparent" />
           <Setter Property="SelectedBrush" Value="{DynamicResource NodeSelectedBrush}" />
           <Setter Property="SelectedBorderThickness" Value="1" />
+          <Setter Property="ClipToBounds" Value="False" />
         </ControlTheme>
       </nodify:NodifyEditor.ItemContainerTheme>
+
+      <!-- The frame round a whole diagram. It only marks; clicks go through it. -->
+      <nodify:NodifyEditor.DecoratorContainerTheme>
+        <ControlTheme TargetType="nodify:DecoratorContainer"
+                      BasedOn="{StaticResource {x:Type nodify:DecoratorContainer}}"
+                      x:DataType="vm:DiagramFrameViewModel">
+          <Setter Property="Location" Value="{Binding Location}" />
+          <Setter Property="IsHitTestVisible" Value="False" />
+        </ControlTheme>
+      </nodify:NodifyEditor.DecoratorContainerTheme>
+      <nodify:NodifyEditor.DecoratorTemplate>
+        <DataTemplate x:DataType="vm:DiagramFrameViewModel">
+          <Border Width="{Binding Width}" Height="{Binding Height}" IsHitTestVisible="False"
+                  BorderBrush="{DynamicResource TextFaintBrush}" BorderThickness="1">
+            <Border HorizontalAlignment="Left" VerticalAlignment="Top" CornerRadius="0,0,8,0"
+                    BorderBrush="{DynamicResource TextFaintBrush}" BorderThickness="0,0,1,1" Padding="10,4,14,4">
+              <TextBlock Text="{Binding Label}" FontSize="13" Foreground="{DynamicResource TextMutedBrush}" />
+            </Border>
+          </Border>
+        </DataTemplate>
+      </nodify:NodifyEditor.DecoratorTemplate>
 
       <nodify:NodifyEditor.ItemTemplate>
         <DataTemplate x:DataType="vm:DiagramNodeViewModel">
           <Panel>
+            <!-- UML's shapes: what they share is one body; what tells them apart is drawn around it. -->
+            <Panel Width="{Binding Width}" MinHeight="{Binding Height}" IsVisible="{Binding IsUml}">
+              <Path Classes="shape-line" Data="{Binding DepthFaces}" IsVisible="{Binding IsDevice}" />
+              <Border IsVisible="{Binding IsFolder}" HorizontalAlignment="Left" VerticalAlignment="Top"
+                      Width="{Binding TabWidth}" Height="17"
+                      Background="{DynamicResource SurfaceRaisedBrush}"
+                      BorderBrush="{DynamicResource TextMutedBrush}" BorderThickness="1,1,1,0" />
+              <Panel Margin="{Binding BodyMargin}">
+                <Border Background="{DynamicResource SurfaceRaisedBrush}"
+                        BorderBrush="{DynamicResource TextMutedBrush}" BorderThickness="1">
+                  <StackPanel Margin="{Binding PortBands}">
+                    <StackPanel Margin="14,9,14,9" Spacing="1">
+                      <TextBlock Text="{Binding Stereotype}" Classes="faint" FontSize="12" HorizontalAlignment="Center"
+                                 IsVisible="{Binding HasStereotype}" />
+                      <TextBlock Text="{Binding Title}" FontSize="15" HorizontalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                 TextDecorations="{Binding TitleDecorations}" FontStyle="{Binding TitleStyle}" />
+                    </StackPanel>
+                    <Border Classes="compartment" IsVisible="{Binding HasUmlFeatures}">
+                      <ItemsControl ItemsSource="{Binding Features}">
+                        <ItemsControl.ItemTemplate>
+                          <DataTemplate>
+                            <TextBlock Text="{Binding}" Classes="mono muted" FontSize="12" LineHeight="19" TextTrimming="CharacterEllipsis" />
+                          </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                      </ItemsControl>
+                    </Border>
+                    <Border Classes="compartment" IsVisible="{Binding HasOperations}">
+                      <ItemsControl ItemsSource="{Binding Operations}">
+                        <ItemsControl.ItemTemplate>
+                          <DataTemplate>
+                            <TextBlock Text="{Binding}" Classes="mono muted" FontSize="12" LineHeight="19" TextTrimming="CharacterEllipsis" />
+                          </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                      </ItemsControl>
+                    </Border>
+                  </StackPanel>
+                </Border>
+                <!-- A reference's dashed border, over the solid one in the box's own colour. -->
+                <Rectangle IsVisible="{Binding IsReference}" Stroke="{DynamicResource SurfaceRaisedBrush}" StrokeThickness="1.4" />
+                <Rectangle IsVisible="{Binding IsReference}" Stroke="{DynamicResource TextMutedBrush}" StrokeThickness="1" StrokeDashArray="4,3" />
+              </Panel>
+              <!-- UML's component icon -->
+              <Path Classes="shape-line" IsVisible="{Binding IsComponent}" HorizontalAlignment="Right" VerticalAlignment="Top"
+                    Margin="{Binding IconMargin}" Data="M3,0 H17 V14 H3 Z M0,3 H6 V6 H0 Z M0,8 H6 V11 H0 Z" />
+              <!-- UML's artifact icon: a page with a folded corner -->
+              <Path Classes="shape-line" IsVisible="{Binding IsArtifact}" HorizontalAlignment="Right" VerticalAlignment="Top"
+                    Margin="{Binding IconMargin}" Data="M0,0 H9 L13,4 V16 H0 Z M9,0 V4 H13" />
+              <!-- Ports: on the border, with their names in the band inside it. -->
+              <ItemsControl ItemsSource="{Binding Ports}" IsHitTestVisible="False" ClipToBounds="False">
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <Panel ClipToBounds="False" />
+                  </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="vm:DiagramPortViewModel">
+                    <Canvas>
+                      <Path Classes="shape-line" Data="{Binding Glyph}" />
+                      <Border Canvas.Left="{Binding SquareLeft}" Canvas.Top="{Binding SquareTop}" Width="10" Height="10"
+                              Background="{DynamicResource SurfaceRaisedBrush}"
+                              BorderBrush="{DynamicResource TextMutedBrush}" BorderThickness="1.2" />
+                      <TextBlock Canvas.Left="{Binding LabelLeft}" Canvas.Top="{Binding LabelTop}" Width="{Binding LabelWidth}"
+                                 Text="{Binding Name}" Classes="muted" FontSize="12" TextAlignment="Center" />
+                    </Canvas>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </Panel>
             <!-- start and done: UML's initial and final nodes -->
             <Panel Width="{Binding Width}" Height="{Binding Height}" IsVisible="{Binding IsPseudo}">
               <Ellipse Width="18" Height="18" Fill="{DynamicResource TextMutedBrush}" IsVisible="{Binding IsStart}" />
@@ -132,6 +239,7 @@
             <Path Classes="head" Classes.hollow="{Binding IsGeneralization}" Classes.open="{Binding IsOpenHead}"
                   Data="{Binding Head}" IsHitTestVisible="False" />
             <Path Classes="tail" Data="{Binding Tail}" IsHitTestVisible="False" />
+            <Path Classes="anchor" Data="{Binding Anchor}" IsHitTestVisible="False" />
             <Path Classes="ports" Data="{Binding Ports}" IsHitTestVisible="False" />
             <!-- The label lives in the connection's own layer, so it scales
                  with the diagram and sits where MSAGL placed it. -->

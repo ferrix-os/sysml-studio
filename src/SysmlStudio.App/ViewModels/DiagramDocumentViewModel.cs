@@ -49,10 +49,86 @@ public sealed partial class DiagramNodeViewModel(DiagramNode node) : ObservableO
 
     public string Maturity => _node.Maturity ?? "none";
 
-    public bool IsPseudo => _node.IsPseudo;
-    public bool IsBox => !_node.IsPseudo;
+    public bool IsPseudo => _node.IsPseudo && !IsUml;
+    public bool IsBox => !_node.IsPseudo && !IsUml;
     public bool IsStart => _node.Pseudo == "start";
     public bool IsDone => _node.Pseudo == "done";
+
+    // ----- UML's shapes ---------------------------------------------------------
+
+    public bool IsUml => _node.Shape != NodeShape.Box;
+    public bool IsFolder => _node.Shape == NodeShape.Folder;
+    public bool IsDevice => _node.Shape == NodeShape.Device;
+    public bool IsComponent => _node.Shape == NodeShape.Component;
+    public bool IsArtifact => _node.Shape == NodeShape.Artifact;
+
+    /// <summary>What is shown above the name: "«stereotype»".</summary>
+    public string? Stereotype => _node.Stereotype;
+    public bool HasStereotype => !string.IsNullOrEmpty(_node.Stereotype);
+
+    /// <summary>A class's operations, in a compartment of their own.</summary>
+    public IReadOnlyList<string> Operations => _node.Operations;
+    public bool HasOperations => _node.Operations.Count > 0;
+
+    /// <summary>The first compartment under the name, in UML's shapes.</summary>
+    public bool HasUmlFeatures => Features.Count > 0;
+
+    /// <summary>An object's name is underlined, which is all that tells it from a class.</summary>
+    public TextDecorationCollection? TitleDecorations => _node.Shape == NodeShape.Instance ? TextDecorations.Underline : null;
+
+    /// <summary>Anything abstract has its name in italics.</summary>
+    public FontStyle TitleStyle => _node.IsAbstract ? FontStyle.Italic : FontStyle.Normal;
+
+    /// <summary>A reference has a dashed border.</summary>
+    public bool IsReference => _node.IsReference;
+
+    /// <summary>Where the body sits in the box, leaving room for a folder's tab or a node's depth.</summary>
+    public Thickness BodyMargin => _node.Shape switch
+    {
+        NodeShape.Folder => new Thickness(0, DiagramLayout.FolderTab, 0, 0),
+        NodeShape.Device => new Thickness(0, DiagramLayout.NodeDepth, DiagramLayout.NodeDepth, 0),
+        _ => default,
+    };
+
+    /// <summary>Room inside the top and bottom border for the names of the ports.</summary>
+    public Thickness PortBands => _node.Ports.Count > 0 ? new Thickness(0, DiagramLayout.PortBand, 0, DiagramLayout.PortBand) : default;
+
+    /// <summary>The corner icon sits under the band that holds the names of the ports.</summary>
+    public Thickness IconMargin => new(0, _node.Ports.Count > 0 ? DiagramLayout.PortBand + 4 : 10, 10, 0);
+
+    public double TabWidth => DiagramLayout.FolderTabWidth(Width);
+
+    /// <summary>A node's depth: the top and right faces of the box, behind the front of it.</summary>
+    public Geometry DepthFaces
+    {
+        get
+        {
+            const double d = DiagramLayout.NodeDepth;
+            var geometry = new StreamGeometry();
+            using var context = geometry.Open();
+            context.BeginFigure(new Point(0, d), isFilled: true);
+            context.LineTo(new Point(d, 0));
+            context.LineTo(new Point(Width, 0));
+            context.LineTo(new Point(Width, Height - d));
+            context.LineTo(new Point(Width - d, Height));
+            context.LineTo(new Point(Width - d, d));
+            context.EndFigure(isClosed: true);
+            context.BeginFigure(new Point(Width - d, d), isFilled: false);
+            context.LineTo(new Point(Width, 0));
+            context.EndFigure(isClosed: false);
+            return geometry;
+        }
+    }
+
+    /// <summary>The ports on the box's border.</summary>
+    public IReadOnlyList<DiagramPortViewModel> Ports { get; } = node.Ports.ConvertAll(p => new DiagramPortViewModel(p));
+
+    /// <summary>The layout moved the ports along the border.</summary>
+    public void RefreshPorts()
+    {
+        foreach (var port in Ports)
+            port.Refresh();
+    }
 
     /// <summary>Where a connection aims: the node's centre.</summary>
     public Point Anchor => new(Location.X + (Width / 2), Location.Y + (Height / 2));
@@ -74,6 +150,8 @@ public sealed partial class DiagramNodeViewModel(DiagramNode node) : ObservableO
         _node.Height = height;
         OnPropertyChanged(nameof(Width));
         OnPropertyChanged(nameof(Height));
+        OnPropertyChanged(nameof(DepthFaces));
+        OnPropertyChanged(nameof(TabWidth));
         OnPropertyChanged(nameof(HalfSize));
         OnPropertyChanged(nameof(Anchor));
     }
@@ -83,6 +161,84 @@ public sealed partial class DiagramNodeViewModel(DiagramNode node) : ObservableO
 
     /// <summary>The box's outline, for cutting a straight line back to its border.</summary>
     public Rect Bounds => new(Location.X, Location.Y, Width, Height);
+}
+
+/// <summary>A port on a box's border: a square, its ball or socket, and its name in the band inside the box.</summary>
+public sealed class DiagramPortViewModel(DiagramPort port) : ObservableObject
+{
+    private const double HalfSquare = 5;
+    private const double Stick = 7;
+    private const double Radius = 5;
+
+    public string Name => port.Name;
+    public double SquareLeft => port.X - HalfSquare;
+    public double SquareTop => port.Y - HalfSquare;
+    public double LabelWidth => port.LabelWidth;
+    public double LabelLeft => port.X - (port.LabelWidth / 2);
+    public double LabelTop => port.OnTop ? port.Y + 7 : port.Y - 7 - 15;
+
+    /// <summary>A stick out of the square, ending in a ball where the port provides and a socket where it requires.</summary>
+    public Geometry? Glyph
+    {
+        get
+        {
+            if (port.Flow == PortFlow.None)
+                return null;
+
+            var outward = port.OnTop ? -1 : 1;
+            var from = new Point(port.X, port.Y + (outward * HalfSquare));
+            var end = from + new Vector(0, outward * Stick);
+            var group = new GeometryGroup();
+            group.Children.Add(new LineGeometry { StartPoint = from, EndPoint = end });
+            if (port.Flow == PortFlow.Provided)
+            {
+                var centre = end + new Vector(0, outward * Radius);
+                group.Children.Add(new EllipseGeometry(new Rect(centre.X - Radius, centre.Y - Radius, Radius * 2, Radius * 2)));
+                return group;
+            }
+
+            // The socket's cup opens away from the box.
+            var cup = new StreamGeometry();
+            using (var context = cup.Open())
+            {
+                var rim = end.Y + (outward * (Radius + 1));
+                context.BeginFigure(new Point(port.X - Radius - 1, rim), isFilled: false);
+                context.ArcTo(new Point(port.X + Radius + 1, rim), new Size(Radius + 1, Radius + 1), 0, false, port.OnTop ? SweepDirection.CounterClockwise : SweepDirection.Clockwise);
+                context.EndFigure(isClosed: false);
+            }
+
+            group.Children.Add(cup);
+            return group;
+        }
+    }
+
+    public void Refresh() => OnPropertyChanged(string.Empty);
+}
+
+/// <summary>The frame around a whole diagram, and what it says in its corner.</summary>
+public sealed partial class DiagramFrameViewModel(string label) : ObservableObject
+{
+    public string Label { get; } = label;
+
+    [ObservableProperty]
+    public partial Point Location { get; set; }
+
+    /// <summary>Its size in the diagram's coordinates.</summary>
+    public Size Size { get; private set; }
+
+    /// <summary>The canvas places a decorator by the zoom but draws it at its own size, so the size is scaled here.</summary>
+    [ObservableProperty]
+    public partial double Width { get; set; }
+
+    [ObservableProperty]
+    public partial double Height { get; set; }
+
+    public void Resize(Size size, double zoom)
+    {
+        Size = size;
+        Width = size.Width * zoom;
+        Height = size.Height * zoom;
+    }
 }
 
 /// <summary>
@@ -121,16 +277,19 @@ public sealed class DiagramConnectionViewModel : ObservableObject, IDisposable
 
     /// <summary>Trace relations are drawn dashed, the way UML draws a dependency.</summary>
     public bool IsDashed => Kind is RelationKind.Satisfy or RelationKind.Verify
-        or RelationKind.Allocate or RelationKind.Dependency or RelationKind.Typing or RelationKind.Flow;
+        or RelationKind.Allocate or RelationKind.Dependency or RelationKind.Typing or RelationKind.Flow or RelationKind.Import;
 
     /// <summary>Specialization and redefinition get UML's hollow triangle.</summary>
     public bool IsGeneralization => Kind is RelationKind.Specialization or RelationKind.Redefinition;
+
+    /// <summary>A stereotype's extension gets UML's filled triangle, as big as the hollow one.</summary>
+    public bool IsExtension => Kind == RelationKind.Extension;
 
     /// <summary>Composition is marked with a filled diamond at the owner's end.</summary>
     public bool IsComposition => Kind == RelationKind.Composition;
 
     /// <summary>An open arrowhead: the trace relations.</summary>
-    public bool IsOpenHead => IsDashed;
+    public bool IsOpenHead => IsDashed || Kind == RelationKind.Association;
 
     /// <summary>A filled arrowhead: everything else.</summary>
     public bool IsFilledHead => !IsGeneralization && !IsOpenHead;
@@ -172,14 +331,14 @@ public sealed class DiagramConnectionViewModel : ObservableObject, IDisposable
     {
         get
         {
-            if (IsConnector)
+            if (IsConnector || _edge.IsHeadless || Kind is RelationKind.Containment or RelationKind.Link)
                 return null;
 
             var points = Points;
             var tip = points[^1];
             var direction = Direction(points[points.Count - 2], tip);
-            var size = IsGeneralization ? 13.0 : 10.0;
-            var width = IsGeneralization ? 7.0 : 5.0;
+            var size = IsGeneralization || IsExtension ? 13.0 : 10.0;
+            var width = IsGeneralization || IsExtension ? 7.0 : 5.0;
             var back = tip - (direction * size);
             var normal = new Vector(-direction.Y, direction.X) * width;
 
@@ -218,7 +377,30 @@ public sealed class DiagramConnectionViewModel : ObservableObject, IDisposable
         }
     }
 
-    /// <summary>The circles where a connection or flow meets its parts; empty for every other relation.</summary>
+    /// <summary>The crossed circle at the owner's end of a package's nesting; empty for every other relation.</summary>
+    public Geometry? Anchor
+    {
+        get
+        {
+            if (Kind != RelationKind.Containment)
+                return null;
+
+            const double radius = 6;
+            var points = Points;
+            var direction = Direction(points[1], points[0]);
+            var centre = points[0] - (direction * radius);
+            var normal = new Vector(-direction.Y, direction.X) * radius;
+            var along = direction * radius;
+
+            var group = new GeometryGroup();
+            group.Children.Add(new EllipseGeometry(new Rect(centre.X - radius, centre.Y - radius, radius * 2, radius * 2)));
+            group.Children.Add(new LineGeometry { StartPoint = centre - normal, EndPoint = centre + normal });
+            group.Children.Add(new LineGeometry { StartPoint = centre - along, EndPoint = centre + along });
+            return group;
+        }
+    }
+
+    /// <summary>The circles where a connection or flow meets its parts; empty for every other relation, and where a port is drawn instead.</summary>
     public Geometry? Ports
     {
         get
@@ -228,10 +410,11 @@ public sealed class DiagramConnectionViewModel : ObservableObject, IDisposable
 
             var points = Points;
             var group = new GeometryGroup();
-            group.Children.Add(new EllipseGeometry(new Rect(points[0].X - 3.5, points[0].Y - 3.5, 7, 7)));
-            if (IsConnector)
+            if (_edge.SourcePort is null)
+                group.Children.Add(new EllipseGeometry(new Rect(points[0].X - 3.5, points[0].Y - 3.5, 7, 7)));
+            if (IsConnector && _edge.TargetPort is null)
                 group.Children.Add(new EllipseGeometry(new Rect(points[^1].X - 3.5, points[^1].Y - 3.5, 7, 7)));
-            return group;
+            return group.Children.Count == 0 ? null : group;
         }
     }
 
@@ -262,6 +445,7 @@ public sealed class DiagramConnectionViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(Line));
         OnPropertyChanged(nameof(Head));
         OnPropertyChanged(nameof(Tail));
+        OnPropertyChanged(nameof(Anchor));
         OnPropertyChanged(nameof(Ports));
         OnPropertyChanged(nameof(LabelLocation));
     }
@@ -341,8 +525,14 @@ public sealed partial class DiagramDocumentViewModel : DocumentViewModel
             {
                 if (e.PropertyName == nameof(DiagramNodeViewModel.IsSelected) && node.IsSelected && !node.IsPseudoNode)
                     ElementClicked?.Invoke(node.Element);
+                else if (e.PropertyName == nameof(DiagramNodeViewModel.Anchor))
+                    RefreshFrame();
             };
         }
+
+        if (diagram.FrameLabel is { } frameLabel)
+            Frames.Add(new DiagramFrameViewModel(frameLabel));
+        RefreshFrame();
 
         // Past two dozen edges the labels crowd each other; the tooltip still names each one.
         var labelled = Connections.Count <= 24;
@@ -358,6 +548,28 @@ public sealed partial class DiagramDocumentViewModel : DocumentViewModel
     public ObservableCollection<DiagramNodeViewModel> Nodes { get; }
     public ObservableCollection<DiagramConnectionViewModel> Connections { get; }
 
+    /// <summary>What is drawn over the canvas: the frame round the picture, where the kind has one.</summary>
+    public ObservableCollection<DiagramFrameViewModel> Frames { get; } = [];
+
+    private void RefreshFrame()
+    {
+        if (Frames.Count == 0 || Diagram.FrameBounds() is not { } bounds)
+            return;
+
+        var frame = Frames[0];
+        frame.Location = new Point(bounds.X, bounds.Y);
+        frame.Resize(new Size(bounds.Width, bounds.Height), Zoom);
+    }
+
+    /// <summary>The routes changed: draw the arrows, the ports they meet and the frame around them again.</summary>
+    private void Redraw()
+    {
+        foreach (var node in Nodes)
+            node.RefreshPorts();
+        foreach (var connection in Connections)
+            connection.Rerouted();
+        RefreshFrame();
+    }
 
     /// <summary>After a drag, every edge is routed again around the boxes where they now stand.</summary>
     [RelayCommand]
@@ -365,8 +577,7 @@ public sealed partial class DiagramDocumentViewModel : DocumentViewModel
     {
         PushPositions();
         DiagramLayout.Route(Diagram);
-        foreach (var connection in Connections)
-            connection.Rerouted();
+        Redraw();
     }
 
     private readonly bool _restored;
@@ -387,7 +598,7 @@ public sealed partial class DiagramDocumentViewModel : DocumentViewModel
         var changed = false;
         foreach (var (node, size) in sizes)
         {
-            if (node.IsPseudoNode || (Math.Abs(size.Height - node.Height) < 3 && Math.Abs(size.Width - node.Width) < 3))
+            if (node.IsPseudo || (Math.Abs(size.Height - node.Height) < 3 && Math.Abs(size.Width - node.Width) < 3))
                 continue;
             node.Resize(Math.Max(size.Width, node.Width), Math.Max(size.Height, node.Height));
             changed = true;
@@ -409,8 +620,7 @@ public sealed partial class DiagramDocumentViewModel : DocumentViewModel
 
         foreach (var node in Nodes)
             node.SyncFromLayout();
-        foreach (var connection in Connections)
-            connection.Rerouted();
+        Redraw();
         return true;
     }
 
@@ -421,6 +631,13 @@ public sealed partial class DiagramDocumentViewModel : DocumentViewModel
         DiagramKind.Requirements => [new("Requirement", "requirement"), new("Satisfy", relation: "Satisfy"), new("Depends", relation: "Dependency"), new("Allocate", relation: "Allocate")],
         DiagramKind.ActionFlow => [new("Action", "action"), new("Succession", relation: "Succession")],
         DiagramKind.StateMachine => [new("State", "state"), new("Transition", relation: "Transition")],
+        DiagramKind.Package => [new("Package", "package")],
+        DiagramKind.Class => [new("Part def", "part def"), new("Attribute def", "attribute def"), new("Specializes", relation: "Specialization"), new("Owns", relation: "Composition")],
+        DiagramKind.ObjectDiagram => [],
+        DiagramKind.Component => [new("Part def", "part def")],
+        DiagramKind.CompositeStructure => [new("Part", "part"), new("Port", "port"), new("Connect", relation: "Connect"), new("Flow", relation: "Flow")],
+        DiagramKind.Deployment => [new("Allocate", relation: "Allocate")],
+        DiagramKind.Profile => [],
         _ => [new("Part def", "part def"), new("Part", "part"), new("Port def", "port def"), new("Specializes", relation: "Specialization"), new("Owns", relation: "Composition")],
     };
 
@@ -449,7 +666,11 @@ public sealed partial class DiagramDocumentViewModel : DocumentViewModel
     /// <summary>Set by the view: renders the canvas to a PNG file.</summary>
     public Action<string>? RenderPng { get; set; }
 
-    partial void OnZoomChanged(double value) => OnPropertyChanged(nameof(ZoomText));
+    partial void OnZoomChanged(double value)
+    {
+        OnPropertyChanged(nameof(ZoomText));
+        RefreshFrame();
+    }
 
     [RelayCommand]
     private void ZoomIn() => Zoom = Math.Min(4, Zoom * 1.2);
@@ -465,7 +686,7 @@ public sealed partial class DiagramDocumentViewModel : DocumentViewModel
     {
         foreach (var node in Nodes)
         {
-            if (Diagram.NodeFor(node.Element) is { } target)
+            if (!node.IsPseudoNode && Diagram.NodeFor(node.Element) is { } target)
             {
                 target.X = node.Location.X;
                 target.Y = node.Location.Y;
@@ -480,8 +701,7 @@ public sealed partial class DiagramDocumentViewModel : DocumentViewModel
         DiagramLayout.Apply(Diagram, measure: !_measured);
         foreach (var node in Nodes)
             node.SyncFromLayout();
-        foreach (var connection in Connections)
-            connection.Rerouted();
+        Redraw();
 
         Fit();
     }
