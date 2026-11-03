@@ -336,7 +336,7 @@ internal sealed partial class ModelBuilder
                     Reference(source, key, target);
                     break;
 
-                case RelationKind.Connect or RelationKind.Interface or RelationKind.Allocate or RelationKind.Flow:
+                case RelationKind.Connect or RelationKind.Interface or RelationKind.Allocate or RelationKind.Flow or RelationKind.Message:
                     AddEnds(ends, origin, target);
                     break;
 

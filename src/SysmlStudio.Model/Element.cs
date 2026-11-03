@@ -56,6 +56,9 @@ public enum RelationKind
 
     /// <summary>"import P::*".</summary>
     Import,
+
+    /// <summary>"message m from a.x to b.y".</summary>
+    Message,
 }
 
 /// <summary>
@@ -83,6 +86,18 @@ public sealed class Relation(RelationKind kind, Element source, string targetRef
     public string? OriginReference { get; } = originReference;
 
     public Element? Origin { get; internal set; }
+
+    /// <summary>The condition of "if x then b" as written, or "else"; null on an unconditional relation.</summary>
+    public string? Guard { get; init; }
+
+    /// <summary>
+    /// The origin when it was read in place rather than named: "then decide;"
+    /// has no name to resolve, so the indexer says which element it means.
+    /// </summary>
+    public Element? OriginNode { get; init; }
+
+    /// <summary>The target when it was read in place rather than named.</summary>
+    public Element? TargetNode { get; init; }
 
     /// <summary>Where the target reference is written, for rename; null where nothing is written.</summary>
     public TextSpan? TargetSpan { get; init; }
@@ -144,6 +159,18 @@ public sealed class Element
 
     /// <summary>The value after "=" or the requirement text, as written.</summary>
     public string? Value { get; internal set; }
+
+    /// <summary>What a message, flow, send or accept carries, as written: "Order", "goal : Goal".</summary>
+    public string? Payload { get; internal set; }
+
+    /// <summary>"snapshot" or "timeslice" when the usage is a portion of its owner's life, else null.</summary>
+    public string? PortionKind { get; internal set; }
+
+    /// <summary>"entry", "do" or "exit" for an action written that way inside a state, else null.</summary>
+    public string? StateAction { get; internal set; }
+
+    /// <summary>Whether a state's body is written "parallel": its substates run at once.</summary>
+    public bool IsParallel { get; internal set; }
 
     public Element? Parent { get; internal set; }
     public IReadOnlyList<Element> Children => _children;
