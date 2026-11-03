@@ -45,6 +45,8 @@ public static partial class DiagramBuilder
                 kinds.Add(DiagramKind.Class);
             if (OutermostObjects(element).Any())
                 kinds.Add(DiagramKind.ObjectDiagram);
+            if (element.Children.Any(c => IsComponent(c)))
+                kinds.Add(DiagramKind.Component);
             return kinds;
         }
 
@@ -52,6 +54,8 @@ public static partial class DiagramBuilder
             kinds.Add(DiagramKind.Class);
         if (IsObject(element) || (element.IsDefinition && OutermostObjects(element).Any()))
             kinds.Add(DiagramKind.ObjectDiagram);
+        if (IsComponent(element) || ComponentsInside(element).Count > 0)
+            kinds.Add(DiagramKind.Component);
         return kinds;
     }
 
@@ -327,6 +331,186 @@ public static partial class DiagramBuilder
     {
         var head = reference?.Trim().Split('.')[0].Split("::")[^1].Trim();
         return head is null ? null : diagram.Nodes.Find(n => ReferenceEquals(n.Element.Parent, owner) && SlotName(n.Element) == head);
+    }
+
+    // ----- component ----------------------------------------------------------
+
+    /// <summary>
+    /// Part definitions with ports, as components with the ports on their
+    /// border. For a package, the ones it holds; for a definition with parts,
+    /// the types of those parts in a frame; for a single component, it and what
+    /// it is wired to. Edges are the connections the model writes between parts
+    /// of those types.
+    /// </summary>
+    private static Diagram ComponentDiagram(Element root)
+    {
+        var diagram = new Diagram(DiagramKind.Component, root);
+        var index = IndexOf(root);
+        var inside = IsPackage(root) ? [] : ComponentsInside(root);
+        List<Element> components;
+        if (IsPackage(root))
+        {
+            components = [.. root.Children.Where(c => IsComponent(c))];
+        }
+        else if (inside.Count > 0)
+        {
+            components = inside;
+            diagram.FrameLabel = $"«component» {root.DisplayName}";
+        }
+        else
+        {
+            components = [root];
+        }
+
+        foreach (var component in components)
+            diagram.Nodes.Add(ComponentNode(component));
+
+        foreach (var connector in index.Connectors)
+        {
+            var owner = connector.Parent!;
+            var inScope = IsPackage(root) ? Contains(root, owner) : inside.Count == 0 || ReferenceEquals(owner, root);
+            if (!inScope)
+                continue;
+
+            foreach (var relation in connector.Relations.Where(r => r.Kind is RelationKind.Connect or RelationKind.Interface))
+            {
+                var (sourceType, sourcePort) = ConnectorEnd(owner, relation.OriginReference);
+                var (targetType, targetPort) = ConnectorEnd(owner, relation.TargetReference);
+                if (sourceType is null || targetType is null || !IsComponent(sourceType) || !IsComponent(targetType))
+                    continue;
+
+                // A single component brings along what it is wired to.
+                if (!IsPackage(root) && inside.Count == 0 && (ReferenceEquals(sourceType, root) || ReferenceEquals(targetType, root)))
+                {
+                    foreach (var peer in new[] { sourceType, targetType }.Where(t => diagram.NodeFor(t) is null))
+                        diagram.Nodes.Add(ComponentNode(peer));
+                }
+
+                if (diagram.NodeFor(sourceType) is { } from && diagram.NodeFor(targetType) is { } to && !ReferenceEquals(from, to))
+                    AddPortEdge(diagram, from, sourcePort, to, targetPort, relation.Kind, connector.Name);
+            }
+        }
+
+        return diagram;
+    }
+
+    private static DiagramNode ComponentNode(Element component)
+    {
+        var node = new DiagramNode(component, component.DisplayName, Abstractly(component, "«component»")) { Shape = NodeShape.Component };
+        var ports = PortsOf(component);
+        node.Ports.AddRange(ports.Select(PortOn));
+
+        // UML's "white box" compartments: what the component provides and requires, by interface.
+        node.Features.AddRange(InterfaceLines(ports, PortFlow.Provided, "provides"));
+        node.Features.AddRange(InterfaceLines(ports, PortFlow.Required, "requires"));
+        return node;
+    }
+
+    private static IEnumerable<string> InterfaceLines(List<Element> ports, PortFlow flow, string word)
+        => ports.Where(p => FlowOf(p) == flow)
+            .Select(p => p.Relations.FirstOrDefault(r => r.Kind == RelationKind.Typing)?.TargetReference.Trim())
+            .OfType<string>()
+            .Distinct()
+            .Select(type => $"«{word}» {type}");
+
+    private static DiagramPort PortOn(Element port) => new(port.DisplayName, FlowOf(port));
+
+    private static void AddPortEdge(Diagram diagram, DiagramNode from, string? sourcePort, DiagramNode to, string? targetPort, RelationKind kind, string? label)
+    {
+        var source = from.Ports.Find(p => p.Name == sourcePort);
+        var target = to.Ports.Find(p => p.Name == targetPort);
+        var known = diagram.Edges.Exists(e => ReferenceEquals(e.Source, from) && ReferenceEquals(e.Target, to)
+            && ReferenceEquals(e.SourcePort, source) && ReferenceEquals(e.TargetPort, target));
+        if (!known)
+            diagram.Edges.Add(new DiagramEdge(from, to, kind, label) { SourcePort = source, TargetPort = target });
+    }
+
+    /// <summary>What a connector end's part is typed by, and the port it names: "fc.power" in Drone is FlightController and power.</summary>
+    private static (Element? Type, string? Port) ConnectorEnd(Element owner, string? reference)
+    {
+        if (string.IsNullOrWhiteSpace(reference))
+            return (null, null);
+
+        var chain = reference.Trim().Split('.');
+        var head = chain[0].Split("::")[^1].Trim();
+        var part = owner.Children.FirstOrDefault(c => c.Name == head);
+        var type = part?.Relations.FirstOrDefault(r => r.Kind == RelationKind.Typing)?.Target;
+        return (type, chain.Length > 1 ? chain[1].Trim().Trim('\'') : null);
+    }
+
+    private static bool IsComponent(Element element) => element.Kind == "part def" && PortsOf(element).Count > 0;
+
+    /// <summary>The components a definition's parts are typed by.</summary>
+    private static List<Element> ComponentsInside(Element element)
+    {
+        if (!element.IsDefinition && !IsTypedUsage(element))
+            return [];
+
+        return [.. element.Children.Where(c => c.Kind is "part" or "item")
+            .Select(c => c.Relations.FirstOrDefault(r => r.Kind == RelationKind.Typing)?.Target)
+            .OfType<Element>()
+            .Where(IsComponent)
+            .Distinct()];
+    }
+
+    /// <summary>An element's ports, its own first, then those of what it is typed by or specializes.</summary>
+    private static List<Element> PortsOf(Element element)
+    {
+        var ports = new List<Element>();
+        var seen = new HashSet<Element>();
+        Collect(element);
+        return ports;
+
+        void Collect(Element current)
+        {
+            if (!seen.Add(current))
+                return;
+
+            ports.AddRange([.. current.Children.Where(c => c.Kind == "port" && c.Name is not null && !ports.Exists(p => p.Name == c.Name))]);
+
+            foreach (var relation in current.Relations.Where(r => r.Kind is RelationKind.Typing or RelationKind.Specialization))
+            {
+                if (relation.Target is { } target)
+                    Collect(target);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Which way a port faces: its own "in" or "out", or, where its definition's
+    /// features all point one way, theirs; "~" turns either round. SysML v2 has
+    /// no provided or required of its own, so this is the nearest thing it says.
+    /// </summary>
+    private static PortFlow FlowOf(Element port)
+    {
+        var typing = port.Relations.FirstOrDefault(r => r.Kind == RelationKind.Typing);
+        var flow = port.Direction switch
+        {
+            "out" => PortFlow.Provided,
+            "in" => PortFlow.Required,
+            _ => FlowOfFeatures(typing?.Target ?? port),
+        };
+
+        if (typing is not { IsConjugated: true })
+            return flow;
+
+        return flow switch
+        {
+            PortFlow.Provided => PortFlow.Required,
+            PortFlow.Required => PortFlow.Provided,
+            _ => PortFlow.Required,
+        };
+    }
+
+    private static PortFlow FlowOfFeatures(Element port)
+    {
+        var directions = port.Children.Select(c => c.Direction).OfType<string>().Distinct().ToList();
+        return directions switch
+        {
+            ["out"] => PortFlow.Provided,
+            ["in"] => PortFlow.Required,
+            _ => PortFlow.None,
+        };
     }
 
     private static bool IsClassLike(Element element) => element.Name is not null && ClassKinds.Contains(element.Kind);

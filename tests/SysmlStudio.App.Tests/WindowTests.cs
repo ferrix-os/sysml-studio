@@ -331,6 +331,8 @@ public sealed class WindowTests
                      (DiagramKind.Package, "FerrixStructure"),
                      (DiagramKind.Class, "FerrixStructure"),
                      (DiagramKind.Class, "FerrixStructure::Kernel"),
+                     (DiagramKind.Component, "FerrixStructure"),
+                     (DiagramKind.Component, "FerrixStructure::Kernel"),
                  })
         {
             if (shell.Workspace!.Find(name) is not { } element)
@@ -454,6 +456,7 @@ public sealed class WindowTests
                      (DiagramKind.Package, "Garage"),
                      (DiagramKind.Class, "Garage"),
                      (DiagramKind.ObjectDiagram, "Garage"),
+                     (DiagramKind.Component, "Garage"),
                  })
         {
             shell.Select(workspace.Find(root)!);
@@ -482,6 +485,8 @@ public sealed class WindowTests
                          (DiagramKind.Package, "DroneSoftware"),
                          (DiagramKind.Class, "DroneStructure"),
                          (DiagramKind.ObjectDiagram, "DroneFleet"),
+                         (DiagramKind.Component, "DroneStructure"),
+                         (DiagramKind.Component, "DroneStructure::Drone"),
                      })
             {
                 shell.Select(shell.Workspace!.Find(root)!);

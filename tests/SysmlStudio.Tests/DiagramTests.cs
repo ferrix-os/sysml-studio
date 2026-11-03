@@ -324,10 +324,51 @@ public sealed class DiagramTests
         Assert.DoesNotContain(diagram.Nodes, n => n.Element.Name == "lift");
     }
 
+    [Fact]
+    public void AComponentDiagramPutsPortsOnTheBorderAndWiresThem()
+    {
+        var diagram = GarageDiagram(DiagramKind.Component, "Garage");
+        var socket = diagram.Nodes.Single(n => n.Label == "Socket");
+        var lift = diagram.Nodes.Single(n => n.Label == "Lift");
+
+        Assert.Equal(NodeShape.Component, socket.Shape);
+        Assert.DoesNotContain(diagram.Nodes, n => n.Label == "Quiet"); // no ports, no component
+        Assert.Equal(PortFlow.Provided, socket.Ports.Single(p => p.Name == "out1").Flow);
+        Assert.Equal(PortFlow.Required, lift.Ports.Single(p => p.Name == "supply").Flow); // ~Mains turns "out" round
+        Assert.Contains("«provides» Mains", socket.Features);
+        Assert.Contains("«requires» Mains", lift.Features);
+
+        var wire = Assert.Single(diagram.Edges);
+        Assert.Equal("out1", wire.SourcePort?.Name);
+        Assert.Equal("supply", wire.TargetPort?.Name);
+    }
+
+    [Fact]
+    public void ADefinitionsComponentDiagramIsItsPartsTypesInAFrame()
+    {
+        var diagram = GarageDiagram(DiagramKind.Component, "Garage::Workshop");
+
+        Assert.Equal("«component» Workshop", diagram.FrameLabel);
+        Assert.Equal(["Lift", "Socket"], diagram.Nodes.Select(n => n.Label));
+    }
+
+    [Fact]
+    public void AnUnconnectedPortStillSitsOnTheBorder()
+    {
+        var diagram = GarageDiagram(DiagramKind.Component, "Garage");
+        DiagramLayout.Apply(diagram);
+
+        var spare = diagram.Nodes.Single(n => n.Label == "Socket").Ports.Single(p => p.Name == "spare");
+        var socket = diagram.Nodes.Single(n => n.Label == "Socket");
+        Assert.InRange(spare.X, 0, socket.Width);
+        Assert.True(spare.Y == 0 || Math.Abs(spare.Y - socket.Height) < 0.01, "on the top or bottom border");
+    }
+
     [Theory]
     [InlineData(DiagramKind.Package, "Garage")]
     [InlineData(DiagramKind.Class, "Garage")]
     [InlineData(DiagramKind.ObjectDiagram, "Garage")]
+    [InlineData(DiagramKind.Component, "Garage")]
     public void EveryKindLaysOutWithNoOverlapAndNoEdgeThroughABox(DiagramKind kind, string root)
     {
         var diagram = GarageDiagram(kind, root);
@@ -360,6 +401,8 @@ public sealed class DiagramTests
     [InlineData(DiagramKind.Class, "Garage", "url(#triangle)")]
     [InlineData(DiagramKind.Class, "Garage", "font-style=\"italic\"")]
     [InlineData(DiagramKind.ObjectDiagram, "Garage", "text-decoration=\"underline\"")]
+    [InlineData(DiagramKind.Component, "Garage", "«component»")]
+    [InlineData(DiagramKind.Component, "Garage", "<circle")]
     public void TheSvgSaysWhatTheCanvasSays(DiagramKind kind, string root, string expected)
     {
         var diagram = GarageDiagram(kind, root);
@@ -386,6 +429,7 @@ public sealed class DiagramTests
     [InlineData(DiagramKind.Package, "DroneSoftware")]
     [InlineData(DiagramKind.Class, "DroneStructure")]
     [InlineData(DiagramKind.ObjectDiagram, "DroneFleet")]
+    [InlineData(DiagramKind.Component, "DroneStructure")]
     public void TheDroneSampleHasSomethingForEveryStructuralKind(DiagramKind kind, string root)
     {
         var element = SysmlWorkspace.Load(Path.Combine(AppContext.BaseDirectory, "Samples", "drone")).Find(root)!;

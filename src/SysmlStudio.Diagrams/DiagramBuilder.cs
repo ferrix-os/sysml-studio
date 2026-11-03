@@ -82,6 +82,7 @@ public static partial class DiagramBuilder
         DiagramKind.Package => PackageDiagram(root),
         DiagramKind.Class => ClassDiagram(root),
         DiagramKind.ObjectDiagram => ObjectDiagram(root),
+        DiagramKind.Component => ComponentDiagram(root),
         _ => throw new ArgumentOutOfRangeException(nameof(kind)),
     };
 
