@@ -486,6 +486,12 @@ public sealed partial class DiagramDocumentViewModel : DocumentViewModel
         DiagramKind.Requirements => [new("Requirement", "requirement"), new("Satisfy", relation: "Satisfy"), new("Depends", relation: "Dependency"), new("Allocate", relation: "Allocate")],
         DiagramKind.ActionFlow => [new("Action", "action"), new("Succession", relation: "Succession")],
         DiagramKind.StateMachine => [new("State", "state"), new("Transition", relation: "Transition")],
+        DiagramKind.UseCase => Diagram.Root.Kind is "package" or "library package" or "model"
+            ? [new("Use case def", "use case def")]
+            : [new("Use case", "use case"), new("Actor", "actor"), new("Subject", "subject"), new("Include", relation: "Include")],
+        DiagramKind.Activity or DiagramKind.InteractionOverview => [new("Action", "action"), new("Decide", "decide"), new("Merge", "merge"), new("Fork", "fork"), new("Join", "join"), new("Succession", relation: "Succession")],
+        DiagramKind.Sequence or DiagramKind.Communication => [new("Part", "part"), new("Message", relation: "Message")],
+        DiagramKind.Timing => [],
         _ => [new("Part def", "part def"), new("Part", "part"), new("Port def", "port def"), new("Specializes", relation: "Specialization"), new("Owns", relation: "Composition")],
     };
 
