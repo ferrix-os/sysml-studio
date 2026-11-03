@@ -5,13 +5,30 @@ package DroneStructure {
     private import ScalarValues::*;
     private import DroneLifecycle::*;
 
-    port def PowerPort;
-    port def DataPort;
-    port def ThrustPort;
+    port def PowerPort {
+        out attribute current : Real;
+    }
+    port def DataPort {
+        out attribute samples : Real;
+    }
+    port def ThrustPort {
+        out attribute torque : Real;
+    }
+
+    item def Parcel {
+        attribute mass : Real;
+    }
+
+    enum def FlightPhase {
+        enum grounded;
+        enum enRoute;
+        enum returning;
+    }
 
     #implemented
     part def <'D.1'> Battery {
         doc /* Six-cell lithium pack, swappable in the field. */
+        @Safety { level = 3; }
         attribute capacity : Real;
         attribute voltage : Real;
         port power : PowerPort;
@@ -21,13 +38,19 @@ package DroneStructure {
     part def <'D.2'> FlightController {
         doc /* Runs the attitude and navigation loops. */
         attribute loopRate : Real;
-        port power : PowerPort;
-        port imu : DataPort;
-        port gps : DataPort;
+        attribute phase : FlightPhase;
+        port power : ~PowerPort;
+        port imu : ~DataPort;
+        port gps : ~DataPort;
         port esc : DataPort;
+        action arm {
+            in key : Real;
+            out ok : Boolean;
+        }
+        action disarm;
     }
 
-    part def Sensor {
+    abstract part def Sensor {
         port data : DataPort;
     }
 
@@ -44,20 +67,21 @@ package DroneStructure {
     #implemented
     part def Motor {
         attribute kv : Real;
-        port power : PowerPort;
-        port control : DataPort;
+        port power : ~PowerPort;
+        port control : ~DataPort;
         port shaft : ThrustPort;
     }
 
     part def Propeller {
         attribute diameter : Real;
-        port hub : ThrustPort;
+        port hub : ~ThrustPort;
     }
 
     #planned
     part def PayloadBay {
         doc /* Holds and releases one parcel. */
         attribute maxLoad : Real;
+        ref held : Parcel;
     }
 
     #implemented
