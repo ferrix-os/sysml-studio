@@ -486,14 +486,7 @@ public sealed partial class DiagramDocumentViewModel : DocumentViewModel
         Fit();
     }
 
-    public static string KindName(DiagramKind kind) => kind switch
-    {
-        DiagramKind.Interconnection => "Interconnection",
-        DiagramKind.Requirements => "Requirements",
-        DiagramKind.ActionFlow => "Action flow",
-        DiagramKind.StateMachine => "State machine",
-        _ => "Definition",
-    };
+    public static string KindName(DiagramKind kind) => DiagramKindCatalog.For(kind).Caption;
 }
 
 /// <summary>A toolbar entry: an element kind to add, or a relation to draw between two boxes.</summary>

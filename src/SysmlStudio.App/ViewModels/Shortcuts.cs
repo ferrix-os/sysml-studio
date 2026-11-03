@@ -53,11 +53,8 @@ public static class ShortcutCatalog
 
         // Diagram
         new("kindText", "Diagram", "Text", "Alt+D0", s => s.SwitchTo(null)),
-        new("kindDefinition", "Diagram", "Definition diagram", "Alt+D1", s => s.SwitchTo(DiagramKind.Definition)),
-        new("kindInterconnection", "Diagram", "Interconnection diagram", "Alt+D2", s => s.SwitchTo(DiagramKind.Interconnection)),
-        new("kindRequirements", "Diagram", "Requirements diagram", "Alt+D3", s => s.SwitchTo(DiagramKind.Requirements)),
-        new("kindAction", "Diagram", "Action flow", "Alt+D4", s => s.SwitchTo(DiagramKind.ActionFlow)),
-        new("kindState", "Diagram", "State machine", "Alt+D5", s => s.SwitchTo(DiagramKind.StateMachine)),
+        new("kindList", "Diagram", "Choose a kind of diagram", "Alt+K", s => s.RequestKindList()),
+        .. DiagramKindCatalog.All.Select(e => new ShortcutAction(e.ShortcutId, "Diagram", e.ShortcutLabel, e.DefaultGesture, s => s.SwitchTo(e.Kind))),
         new("autoLayout", "Diagram", "Auto-layout", "Ctrl+L", s => Run(s.RelayoutCommand)),
         new("fit", "Diagram", "Fit to view", "Ctrl+D0", s => Run(s.FitCommand)),
         new("zoomIn", "Diagram", "Zoom in", "Ctrl+OemPlus", s => s.ActiveDiagram?.ZoomInCommand.Execute(null)),

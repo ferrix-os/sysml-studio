@@ -19,44 +19,69 @@
     <!-- ===== Title bar ===== -->
     <Border Grid.Row="0" Background="{DynamicResource HeaderBrush}"
             BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1">
-      <Panel>
-        <!-- Logo, name, breadcrumb -->
-        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0" Spacing="9">
-          <Border Width="17" Height="17" BorderBrush="{DynamicResource TextMutedBrush}" BorderThickness="1.4"
-                  VerticalAlignment="Center">
-            <Border Width="7" Height="7" Background="{DynamicResource AccentBrush}" />
-          </Border>
-          <TextBlock Text="SysML Studio" FontSize="15" VerticalAlignment="Center" />
-          <Border Width="1" Height="20" Background="{DynamicResource BorderStrongBrush}" Margin="6,0,6,0" />
-          <TextBlock VerticalAlignment="Center" FontSize="14">
+      <Grid ColumnDefinitions="*,Auto,*">
+        <!-- Logo, name, breadcrumb: the breadcrumb gives way before the switcher does -->
+        <DockPanel VerticalAlignment="Center" Margin="16,0,12,0">
+          <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center" Spacing="9">
+            <Border Width="17" Height="17" BorderBrush="{DynamicResource TextMutedBrush}" BorderThickness="1.4"
+                    VerticalAlignment="Center">
+              <Border Width="7" Height="7" Background="{DynamicResource AccentBrush}" />
+            </Border>
+            <TextBlock Text="SysML Studio" FontSize="15" VerticalAlignment="Center" />
+            <Border Width="1" Height="20" Background="{DynamicResource BorderStrongBrush}" Margin="6,0,6,0" />
+          </StackPanel>
+          <TextBlock VerticalAlignment="Center" FontSize="14" TextTrimming="CharacterEllipsis">
             <Run Text="{Binding WorkspaceName}" Foreground="{DynamicResource TextMutedBrush}" />
+            <Run Text="{Binding BreadcrumbTail}" />
           </TextBlock>
-          <TextBlock Text="/" Classes="faint" FontSize="14" VerticalAlignment="Center" IsVisible="{Binding HasDocumentCaption}" />
-          <TextBlock Text="{Binding DocumentCaption}" FontSize="14" VerticalAlignment="Center"
-                     MaxWidth="320" TextTrimming="CharacterEllipsis" IsVisible="{Binding HasDocumentCaption}" />
-        </StackPanel>
+        </DockPanel>
 
-        <!-- Diagram kind -->
-        <Border Classes="segmented" HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding ShowsKinds}">
-          <ItemsControl ItemsSource="{Binding DiagramKinds}">
-            <ItemsControl.ItemsPanel>
-              <ItemsPanelTemplate>
-                <StackPanel Orientation="Horizontal" />
-              </ItemsPanelTemplate>
-            </ItemsControl.ItemsPanel>
-            <ItemsControl.ItemTemplate>
-              <DataTemplate x:DataType="vm:DiagramKindOption">
-                <Button Classes="segment" Classes.active="{Binding IsActive}" Content="{Binding Label}"
-                        IsEnabled="{Binding IsAvailable}" Padding="12,4"
-                        Command="{Binding $parent[Window].((vm:ShellViewModel)DataContext).SwitchKindCommand}"
-                        CommandParameter="{Binding}" />
-              </DataTemplate>
-            </ItemsControl.ItemTemplate>
-          </ItemsControl>
+        <!-- The text, or a kind of diagram from the list -->
+        <Border Grid.Column="1" Classes="segmented" VerticalAlignment="Center" IsVisible="{Binding ShowsKinds}">
+          <StackPanel Orientation="Horizontal">
+            <Button Classes="segment" Classes.active="{Binding TextOption.IsActive}" Content="{Binding TextOption.Label}"
+                    IsEnabled="{Binding TextOption.IsAvailable}" Padding="12,4" ToolTip.Tip="{Binding Keys[kindText]}"
+                    Command="{Binding SwitchKindCommand}" CommandParameter="{Binding TextOption}" />
+            <Button x:Name="KindListButton" Classes="segment" Classes.active="{Binding ShowsDiagramKind}" Padding="12,4,8,4"
+                    ToolTip.Tip="{Binding Keys[kindList]}">
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <TextBlock Text="{Binding DiagramKindLabel}" VerticalAlignment="Center" />
+                <ic:SymbolIcon Symbol="ChevronDown" FontSize="12" VerticalAlignment="Center" />
+              </StackPanel>
+              <Button.Flyout>
+                <Flyout Placement="BottomEdgeAlignedLeft" Opened="OnKindListOpened">
+                  <Border Classes="kind-list" KeyDown="OnKindListKeyDown">
+                    <ItemsControl ItemsSource="{Binding DiagramKindGroups}">
+                      <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                          <StackPanel Orientation="Horizontal" Spacing="10" />
+                        </ItemsPanelTemplate>
+                      </ItemsControl.ItemsPanel>
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:DiagramKindGroup">
+                          <StackPanel Width="152" Spacing="1">
+                            <TextBlock Text="{Binding Name}" Classes="label" Margin="9,2,0,5" />
+                            <ItemsControl ItemsSource="{Binding Options}">
+                              <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:DiagramKindOption">
+                                  <Button Classes="flat kind-option" Classes.active="{Binding IsActive}" Content="{Binding Label}"
+                                          IsEnabled="{Binding IsAvailable}" Click="OnKindOptionClick" />
+                                </DataTemplate>
+                              </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                          </StackPanel>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </Border>
+                </Flyout>
+              </Button.Flyout>
+            </Button>
+          </StackPanel>
         </Border>
 
         <!-- History, search, export, theme -->
-        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center"
+        <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center"
                     Margin="0,0,12,0" Spacing="6">
           <StackPanel Orientation="Horizontal" Spacing="2" IsVisible="{Binding HasWorkspace}">
             <Button Classes="flat" Command="{Binding UndoCommand}" ToolTip.Tip="{Binding Keys[undo]}">
@@ -95,7 +120,7 @@
             <ic:SymbolIcon Symbol="WeatherMoon" FontSize="17" />
           </Button>
         </StackPanel>
-      </Panel>
+      </Grid>
     </Border>
 
     <!-- ===== Body ===== -->

@@ -189,6 +189,24 @@
     <Setter Property="Opacity" Value="0.45" />
   </Style>
 
+  <!-- The list of diagram kinds under the switcher: one column per group. -->
+  <Style Selector="FlyoutPresenter">
+    <Setter Property="CornerRadius" Value="0" />
+    <Setter Property="MaxWidth" Value="900" />
+    <Setter Property="Padding" Value="6" />
+    <Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource BorderStrongBrush}" />
+  </Style>
+  <Style Selector="Border.kind-list">
+    <Setter Property="Padding" Value="4,6" />
+  </Style>
+  <Style Selector="Button.kind-option">
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+    <Setter Property="HorizontalContentAlignment" Value="Left" />
+    <Setter Property="Padding" Value="9,5" />
+    <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+  </Style>
+
   <!-- ===== Tabs ===== -->
 
   <!-- A document tab: text, an optional dot; the one in front is underlined. -->

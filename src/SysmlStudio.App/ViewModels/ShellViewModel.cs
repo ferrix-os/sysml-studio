@@ -34,11 +34,14 @@ public abstract partial class DocumentViewModel : ObservableObject
     public string ToolTip { get; protected init; } = string.Empty;
 }
 
-/// <summary>One segment of the title bar's switcher: a kind of diagram, or the element's text when <see cref="Kind"/> is null.</summary>
-public sealed partial class DiagramKindOption(DiagramKind? kind, string label) : ObservableObject
+/// <summary>One entry of the title bar's switcher: a kind of diagram, or the element's text when <see cref="Kind"/> is null.</summary>
+public sealed partial class DiagramKindOption(DiagramKind? kind, string label, string group = "") : ObservableObject
 {
     public DiagramKind? Kind { get; } = kind;
     public string Label { get; } = label;
+
+    /// <summary>The column it is listed in; the text stands apart and has none.</summary>
+    public string Group { get; } = group;
 
     [ObservableProperty]
     public partial bool IsAvailable { get; set; }
@@ -69,15 +72,11 @@ public sealed partial class ShellViewModel : ObservableObject
         Bottom = new BottomPanelViewModel(this);
         Welcome = new WelcomeViewModel(this);
 
-        DiagramKinds =
-        [
-            new(null, "Text"),
-            new(DiagramKind.Definition, "Definition"),
-            new(DiagramKind.Interconnection, "Interconnection"),
-            new(DiagramKind.Requirements, "Requirements"),
-            new(DiagramKind.ActionFlow, "Action"),
-            new(DiagramKind.StateMachine, "State"),
-        ];
+        TextOption = new DiagramKindOption(null, "Text");
+        DiagramKinds = [TextOption, .. DiagramKindCatalog.All.Select(e => new DiagramKindOption(e.Kind, e.Label, e.Group))];
+        DiagramKindGroups = [.. DiagramKindCatalog.Groups
+            .Select(g => new DiagramKindGroup(g, [.. DiagramKinds.Where(o => o.Group == g)]))
+            .Where(g => g.Options.Count > 0)];
 
         Browser.SelectionChanged += OnBrowserSelection;
         LoadSettings();
@@ -100,7 +99,22 @@ public sealed partial class ShellViewModel : ObservableObject
     /// <summary>A model is open but nothing is drawn yet: the centre says what to do.</summary>
     public bool ShowsHint => HasWorkspace && !HasDocuments;
 
+    /// <summary>Everything the switcher offers: the text, then each kind of diagram.</summary>
     public ObservableCollection<DiagramKindOption> DiagramKinds { get; }
+
+    /// <summary>The switcher's first segment: the element's text.</summary>
+    public DiagramKindOption TextOption { get; }
+
+    /// <summary>The switcher's list: the kinds of diagram, in their columns.</summary>
+    public IReadOnlyList<DiagramKindGroup> DiagramKindGroups { get; }
+
+    /// <summary>What the list's button says: the kind in front, or "Diagram" over text and over nothing.</summary>
+    [ObservableProperty]
+    public partial string DiagramKindLabel { get; set; } = "Diagram";
+
+    /// <summary>A diagram is in front, so the list's button reads as the selected segment.</summary>
+    [ObservableProperty]
+    public partial bool ShowsDiagramKind { get; set; }
 
     /// <summary>The width of the model panel that floats over the left of the documents.</summary>
     public static double SideWidth => 232;
@@ -128,6 +142,9 @@ public sealed partial class ShellViewModel : ObservableObject
     public partial string DocumentCaption { get; set; } = string.Empty;
 
     public bool HasDocumentCaption => DocumentCaption.Length > 0;
+
+    /// <summary>What follows the workspace in the breadcrumb.</summary>
+    public string BreadcrumbTail => HasDocumentCaption ? "/ " + DocumentCaption : string.Empty;
 
     [ObservableProperty]
     public partial bool IsDark { get; set; }
@@ -393,6 +410,9 @@ public sealed partial class ShellViewModel : ObservableObject
             option.IsActive = option.Kind is null ? ActiveSource is not null : ActiveKind == option.Kind;
             option.IsAvailable = option.IsActive || available.Contains(option.Kind);
         }
+
+        ShowsDiagramKind = ActiveKind is not null;
+        DiagramKindLabel = ActiveKind is { } kind ? DiagramKindCatalog.For(kind).Label : "Diagram";
     }
 
     /// <summary>Opens a file in a source tab, at a line when one is given.</summary>
@@ -485,6 +505,7 @@ public sealed partial class ShellViewModel : ObservableObject
             _ => string.Empty,
         };
         OnPropertyChanged(nameof(HasDocumentCaption));
+        OnPropertyChanged(nameof(BreadcrumbTail));
         RefreshDiagramKinds();
         RefreshStatus();
     }

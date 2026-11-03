@@ -438,6 +438,90 @@ public sealed class WindowTests
         Assert.Contains(diagram.Connections, c => c.Label == "satisfies");
     }
 
+    /// <summary>A kind added to the enum and left out of the switcher's table could never be reached.</summary>
+    [AvaloniaFact]
+    public void EveryDiagramKindIsInTheSwitchersTable()
+    {
+        var kinds = Enum.GetValues<DiagramKind>();
+        Assert.Equal(kinds.Length, DiagramKindCatalog.All.Select(e => e.Kind).Distinct().Count());
+        Assert.All(kinds, k => Assert.Contains(DiagramKindCatalog.All, e => e.Kind == k));
+        Assert.All(DiagramKindCatalog.All, e => Assert.Contains(e.Group, DiagramKindCatalog.Groups));
+        Assert.Equal(DiagramKindCatalog.All.Count, DiagramKindCatalog.All.Select(e => e.ShortcutId).Distinct().Count());
+        Assert.All(DiagramKindCatalog.All, e => Assert.NotNull(ShortcutCatalog.Find(e.ShortcutId)));
+    }
+
+    /// <summary>
+    /// The list under the switcher opens from its key, shows the kinds in their
+    /// groups with what cannot be drawn greyed out, and a click draws the kind
+    /// in the same tab and says so on the button.
+    /// </summary>
+    [AvaloniaFact]
+    public void TheSwitchersListOffersTheKindsInGroups()
+    {
+        var (window, shell) = Open(Fixture);
+        shell.Select(shell.Workspace!.Find("Sample")!);
+        shell.OpenDiagramCommand.Execute(DiagramKind.Definition);
+        Settle();
+        Assert.Equal("Definition", shell.DiagramKindLabel);
+        Assert.True(shell.ShowsDiagramKind);
+
+        window.KeyPress(Avalonia.Input.Key.K, Avalonia.Input.RawInputModifiers.Alt, Avalonia.Input.PhysicalKey.K, "k");
+        Settle();
+        var flyout = KindListButton(window).Flyout!;
+        Assert.True(flyout.IsOpen);
+
+        var content = Assert.IsType<Avalonia.Controls.Flyout>(flyout).Content as Avalonia.Controls.Control;
+        var buttons = content!.GetVisualDescendants().OfType<Avalonia.Controls.Button>().ToList();
+        Assert.Equal(shell.DiagramKinds.Count - 1, buttons.Count); // every kind; the text has its own segment
+        Assert.Contains(buttons, b => (string?)b.Content == "Requirements" && b.IsEnabled);
+        Assert.Contains(buttons, b => (string?)b.Content == "State" && !b.IsEnabled); // a package has no states of its own
+        Assert.Equal(DiagramKindCatalog.Groups.Count(g => shell.DiagramKinds.Any(k => k.Group == g)), shell.DiagramKindGroups.Count);
+
+        var root = Avalonia.Controls.TopLevel.GetTopLevel(content)!;
+        if (Environment.GetEnvironmentVariable("SYSML_STUDIO_SHOTS") is { Length: > 0 } folder)
+        {
+            using var frame = root.CaptureRenderedFrame();
+            using var file = File.Create(Path.Combine(folder, "switcher-list.png"));
+            frame?.Save(file, new Avalonia.Media.Imaging.PngBitmapEncoderOptions());
+        }
+
+        var requirements = buttons.Single(b => (string?)b.Content == "Requirements");
+        requirements.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Avalonia.Controls.Button.ClickEvent));
+        Settle();
+
+        Assert.False(flyout.IsOpen);
+        Assert.Single(shell.Documents);
+        Assert.Equal(DiagramKind.Requirements, shell.ActiveKind);
+        Assert.Equal("Requirements", shell.DiagramKindLabel);
+
+        shell.SwitchKindCommand.Execute(shell.TextOption);
+        Settle();
+        Assert.Equal("Diagram", shell.DiagramKindLabel);
+        Assert.False(shell.ShowsDiagramKind);
+        Shoot(window, "switcher-over-text");
+    }
+
+    private static Avalonia.Controls.Button KindListButton(MainWindow window)
+        => window.GetVisualDescendants().OfType<Avalonia.Controls.Button>().Single(b => b.Name == "KindListButton");
+
+    /// <summary>The switcher fits the narrowest window the title bar is allowed.</summary>
+    [AvaloniaFact]
+    public void TheSwitcherFitsTheNarrowestWindow()
+    {
+        var (window, shell) = Open(Fixture);
+        window.Width = window.MinWidth;
+        shell.Select(shell.Workspace!.Find("Sample::Vehicle")!);
+        shell.OpenDiagramCommand.Execute(DiagramKind.Interconnection);
+        Settle();
+        Shoot(window, "switcher-narrow");
+
+        var button = KindListButton(window);
+        var search = window.GetVisualDescendants().OfType<Avalonia.Controls.AutoCompleteBox>().Single(b => b.Name == "SearchBox");
+        var right = button.TranslatePoint(new Point(button.Bounds.Width, 0), window)!.Value.X;
+        var searchLeft = search.TranslatePoint(default, window)!.Value.X;
+        Assert.True(right <= searchLeft, $"the switcher ends at {right} and the search starts at {searchLeft}");
+    }
+
     /// <summary>Tabs: a source tab opens beside the diagram, and closing the one in front shows its neighbour.</summary>
     [AvaloniaFact]
     public void TabsOpenAndClose()

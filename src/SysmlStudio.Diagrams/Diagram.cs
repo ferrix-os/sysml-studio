@@ -19,6 +19,27 @@ public enum DiagramKind
 
     /// <summary>A state definition's states and transitions.</summary>
     StateMachine,
+
+    /// <summary>UML package diagram: packages, what they nest and what they import.</summary>
+    Package,
+
+    /// <summary>UML class diagram: definitions as classes, with specialization, composition and association.</summary>
+    Class,
+
+    /// <summary>UML object diagram: individuals and usages with bound values, and the links between them.</summary>
+    ObjectDiagram,
+
+    /// <summary>UML component diagram: part definitions with their ports and interfaces.</summary>
+    Component,
+
+    /// <summary>UML composite structure diagram: one definition's parts, ports and connectors.</summary>
+    CompositeStructure,
+
+    /// <summary>UML deployment diagram: what is allocated onto which parts.</summary>
+    Deployment,
+
+    /// <summary>UML profile diagram: metadata definitions as stereotypes, and what they apply to.</summary>
+    Profile,
 }
 
 /// <summary>One box. <see cref="Element"/> is what it stands for in the model.</summary>

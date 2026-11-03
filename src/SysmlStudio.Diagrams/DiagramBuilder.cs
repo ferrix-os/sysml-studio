@@ -17,7 +17,7 @@ namespace SysmlStudio.Diagrams;
 /// "dependency from a to b" is its own statement but drawn from a to b.
 /// </para>
 /// </summary>
-public static class DiagramBuilder
+public static partial class DiagramBuilder
 {
     private static readonly HashSet<string> StructuralFeatures = ["part", "item", "ref", "port", "occurrence"];
     private static readonly HashSet<string> RequirementKinds = ["requirement", "requirement def", "concern", "concern def"];
@@ -25,6 +25,15 @@ public static class DiagramBuilder
 
     /// <summary>The diagrams that can be drawn of <paramref name="element"/>, most telling first.</summary>
     public static IReadOnlyList<DiagramKind> KindsFor(Element element)
+    {
+        // The UML views come after the SysML ones, so browsing onto an element
+        // still shows what it always showed first.
+        var kinds = SysmlKindsFor(element);
+        kinds.AddRange(StructuralKindsFor(element));
+        return kinds;
+    }
+
+    private static List<DiagramKind> SysmlKindsFor(Element element)
     {
         var kinds = new List<DiagramKind>();
 

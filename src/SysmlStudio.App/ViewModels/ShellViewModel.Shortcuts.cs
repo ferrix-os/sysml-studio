@@ -20,6 +20,9 @@ public sealed partial class ShellViewModel
     /// <summary>Asks the window to put the caret in the search box.</summary>
     public event Action? SearchFocusRequested;
 
+    /// <summary>Asks the window to open the switcher's list of diagram kinds.</summary>
+    public event Action? KindListRequested;
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowsSide), nameof(CanvasInsets))]
     public partial bool IsSideOpen { get; set; } = true;
@@ -46,6 +49,8 @@ public sealed partial class ShellViewModel
     }
 
     public void RequestSearchFocus() => SearchFocusRequested?.Invoke();
+
+    public void RequestKindList() => KindListRequested?.Invoke();
 
     /// <summary>Shows the tab <paramref name="step"/> places along, wrapping round.</summary>
     public void CycleTab(int step)
