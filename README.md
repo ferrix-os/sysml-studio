@@ -74,7 +74,36 @@ around them; drag anything where you want it.
 | Requirements | Action | State |
 |---|---|---|
 | ![Requirements diagram](docs/images/requirements.png) | ![Action flow](docs/images/action-dark.png) | ![State machine](docs/images/state-dark.png) |
-| Requirements with ids and text, and the parts that satisfy them. | The steps of an action and the successions between them. | States and the transitions between them. |
+| Requirements with ids and text, and the parts that satisfy them. | The steps of an action and the successions between them. | States, composite ones holding theirs, with initial and final pseudostates, entry, do and exit, and transitions labelled trigger, guard and effect. |
+
+### UML's behavior and interaction diagrams
+
+The text stays the source of truth and there is no UML model behind it: each
+of these is a view of the SysML v2 elements a model already holds, drawn in
+that diagram's notation. A kind that would have nothing to show is greyed out
+in the switcher.
+
+| Use Case | Activity |
+|---|---|
+| ![Use case diagram](docs/images/use-case.png) | ![Activity diagram](docs/images/activity.png) |
+| `use case def` and `use case` as ellipses inside the boundary their `subject` draws, `actor`s as figures outside, `include` as a dashed arrow. | The Action diagram in UML's notation: round-cornered actions, `decide` and `merge` as diamonds, `fork` and `join` as bars, guards, `send` and `accept` as pentagons. |
+
+| Sequence | Communication |
+|---|---|
+| ![Sequence diagram](docs/images/sequence.png) | ![Communication diagram](docs/images/communication.png) |
+| Each part in an `occurrence def` or an action that has a `message` is a lifeline. Time runs down, in the order `then`, `first a then b` and the events on a lifeline state, and in written order where they state none. An `action` a part performs around its events is an activation bar. | The same messages, numbered in that order, on one link between each pair of participants, each with an arrow for the way it goes. |
+
+| Interaction Overview | Timing |
+|---|---|
+| ![Interaction overview diagram](docs/images/interaction-overview.png) | ![Timing diagram](docs/images/timing.png) |
+| An activity whose steps are interactions: a step that holds messages, or is typed by or performs what does, is a frame tagged `ref`. | A row for each life, a hexagon for each `timeslice` and a tick for each `snapshot`, on an axis of what comes after what. |
+
+Some of UML cannot be read from SysML v2, and is not made up. A timing
+diagram's axis has an order and no scale, and says so, because the text gives
+no durations. Every message is drawn open-headed, as one nobody waits for,
+except a `succession flow`, which is filled because its target waits for the
+transfer; a reply has no way to be written. A lifeline with no `action` around
+its events has no activation bars.
 
 ## Editing
 
@@ -82,7 +111,9 @@ Right-click an element to add inside it,
 rename it, type it, mark its maturity or delete it. Each dialog says what it
 will change before it writes. The toolbar under a diagram adds elements and
 draws relations between two clicked boxes: connect, flow, succession,
-transition, satisfy, dependency, allocate, specialization and composition.
+transition, satisfy, dependency, allocate, specialization, composition, include
+and message. Timing diagrams are read-only: where a mark stands is what it
+says, so nothing on one can be dragged or drawn.
 
 <img src="docs/images/rename.png" alt="The rename dialog: renaming FlightController to Autopilot updates 2 references in 1 file, and formatting and comments stay as they are.">
 
@@ -154,7 +185,7 @@ Nothing here reimplements what a library already does.
 | `SysmlStudio.Syntax` | works |
 | `SysmlStudio.Model` | works |
 | `SysmlStudio.Diagrams` | works |
-| `SysmlStudio.Editing` | rename (every reference, across files), delete, add, set type, specialize, maturity, doc comment, and drawing connect / flow / succession / transition / satisfy / dependency / allocate / specialization / composition; each re-parsed before it is accepted |
+| `SysmlStudio.Editing` | rename (every reference, across files), delete, add, set type, specialize, maturity, doc comment, and drawing connect / flow / succession / transition / satisfy / dependency / allocate / specialization / composition / include / message; each re-parsed before it is accepted |
 | `SysmlStudio.App` | model tree, diagram tabs with a kind switcher, inspector, problems and usages, right-click menus on the tree and the canvas, edit dialogs that say what they will change, a relation tool, undo/redo, source tabs, SysML v2 JSON and XMI export; Save writes the changed files |
 
 ### Building
