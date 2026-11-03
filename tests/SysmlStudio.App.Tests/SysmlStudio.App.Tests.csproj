@@ -23,6 +23,7 @@
 
   <ItemGroup>
     <None Include="..\SysmlStudio.Tests\Fixtures\**" LinkBase="Fixtures" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\samples\drone\**" LinkBase="DroneModel" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

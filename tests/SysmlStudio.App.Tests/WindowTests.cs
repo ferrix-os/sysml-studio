@@ -116,6 +116,12 @@ public sealed class WindowTests
                      (DiagramKind.Interconnection, "Sample::Vehicle"),
                      (DiagramKind.ActionFlow, "Sample::StartUp"),
                      (DiagramKind.StateMachine, "Sample::Running"),
+                     (DiagramKind.UseCase, "SampleBehaviour::Refuel"),
+                     (DiagramKind.Activity, "SampleBehaviour::Check"),
+                     (DiagramKind.Sequence, "SampleBehaviour::Handshake"),
+                     (DiagramKind.Communication, "SampleBehaviour::Handshake"),
+                     (DiagramKind.InteractionOverview, "SampleBehaviour::Overview"),
+                     (DiagramKind.Timing, "SampleBehaviour::OneTank"),
                  })
         {
             shell.Select(workspace.Find(root)!);
@@ -126,6 +132,54 @@ public sealed class WindowTests
             Assert.Equal(kind, shell.ActiveKind);
             Shoot(window, $"diagram-{kind}");
         }
+    }
+
+    /// <summary>
+    /// Each behavioural kind, over the sample that writes its elements, in both
+    /// themes. A UML shape is drawn from marks a canvas has to paint: this is
+    /// where one that paints nothing, or fails to, shows.
+    /// </summary>
+    [AvaloniaFact]
+    public void EveryBehaviouralKindDrawsTheDroneInBothThemes()
+    {
+        var (window, shell) = Open(Path.Combine(AppContext.BaseDirectory, "DroneModel"));
+        var workspace = shell.Workspace!;
+
+        foreach (var dark in new[] { false, true })
+        {
+            shell.IsDark = dark;
+            foreach (var (kind, root) in new[]
+                     {
+                         (DiagramKind.UseCase, "DroneInteractions::DeliverParcel"),
+                         (DiagramKind.UseCase, "DroneInteractions"),
+                         (DiagramKind.Activity, "DroneBehaviour::PlanFlight"),
+                         (DiagramKind.StateMachine, "DroneBehaviour::FlightModes"),
+                         (DiagramKind.StateMachine, "DroneBehaviour::Airframe"),
+                         (DiagramKind.Sequence, "DroneInteractions::HandOver"),
+                         (DiagramKind.Sequence, "DroneInteractions::RequestClearance"),
+                         (DiagramKind.Sequence, "DroneInteractions::FlyToAddress"),
+                         (DiagramKind.Communication, "DroneInteractions::RequestClearance"),
+                         (DiagramKind.Communication, "DroneInteractions::FlyToAddress"),
+                         (DiagramKind.InteractionOverview, "DroneInteractions::DeliveryOverview"),
+                         (DiagramKind.Timing, "DroneInteractions::DeliveryFlight"),
+                     })
+            {
+                shell.Select(workspace.Find(root)!);
+                Assert.True(shell.OpenDiagramCommand.CanExecute(kind), $"{kind} of {root}");
+                shell.OpenDiagramCommand.Execute(kind);
+                Settle();
+
+                Assert.Equal(kind, shell.ActiveKind);
+                var diagram = Assert.IsType<DiagramDocumentViewModel>(shell.ActiveDocument);
+                Assert.NotEmpty(diagram.Nodes);
+                Assert.Contains(diagram.Nodes, n => n.IsBox || (n.IsDrawn && n.Marks.Count > 0));
+                Shoot(window, $"drone-{kind}-{root.Split("::")[^1]}-{(dark ? "dark" : "light")}");
+                shell.CloseDocumentCommand.Execute(shell.ActiveDocument);
+                Settle();
+            }
+        }
+
+        shell.IsDark = false;
     }
 
     [AvaloniaFact]
@@ -327,6 +381,10 @@ public sealed class WindowTests
                      (DiagramKind.Definition, "FerrixStructure::Kernel"),
                      (DiagramKind.Definition, "FerrixDrivers::DevMgr"),
                      (DiagramKind.Definition, "FerrixBoot"),
+                     (DiagramKind.Activity, "FerrixBoot::KernelBringUp"),
+                     (DiagramKind.Activity, "FerrixBoot::Dispatch"),
+                     (DiagramKind.Activity, "FerrixMemory::DemandFault"),
+                     (DiagramKind.StateMachine, "FerrixScheduling::DomainLifecycle"),
                  })
         {
             if (shell.Workspace!.Find(name) is not { } element)
@@ -334,6 +392,10 @@ public sealed class WindowTests
 
             shell.Select(element);
             shell.OpenDiagramCommand.Execute(kind);
+            Settle();
+
+            // A model this size outlasts one settle: frame it again before the picture is taken.
+            Assert.IsType<DiagramDocumentViewModel>(shell.ActiveDocument).Fit();
             Settle();
             Shoot(window, "real-" + name.Replace("::", "-", StringComparison.Ordinal) + "-" + kind);
 
@@ -379,6 +441,143 @@ public sealed class WindowTests
 
         Assert.NotEqual(before, during);
         Assert.NotEqual(lineBefore, lineDuring); // the drawn line followed, before the drop
+    }
+
+    /// <summary>Opens a kind of diagram of an element in the fixture and returns what is on the canvas.</summary>
+    private static (MainWindow Window, DiagramDocumentViewModel Diagram) Draw(DiagramKind kind, string root)
+    {
+        var (window, shell) = Open(Fixture);
+        shell.Select(shell.Workspace!.Find(root)!);
+        shell.OpenDiagramCommand.Execute(kind);
+        Settle();
+        return (window, Assert.IsType<DiagramDocumentViewModel>(shell.ActiveDocument));
+    }
+
+    /// <summary>Drags a node by a point inside it, and drops it.</summary>
+    private static void Drag(MainWindow window, DiagramNodeViewModel node, Point grip, Point by, Action? whileHeld = null)
+    {
+        var container = window.GetVisualDescendants().OfType<Nodify.Avalonia.ItemContainer>()
+            .First(c => ReferenceEquals(c.DataContext, node));
+
+        var from = container.TranslatePoint(grip, window)!.Value;
+        window.MouseMove(from);
+        window.MouseDown(from, Avalonia.Input.MouseButton.Left);
+        for (var step = 1; step <= 10; step++)
+        {
+            window.MouseMove(from + new Point(by.X * step / 10, by.Y * step / 10), Avalonia.Input.RawInputModifiers.LeftMouseButton);
+            Dispatcher.UIThread.RunJobs();
+        }
+
+        Settle();
+        whileHeld?.Invoke();
+        window.MouseUp(from + by, Avalonia.Input.MouseButton.Left);
+        Settle();
+    }
+
+    /// <summary>
+    /// A lifeline goes sideways and its messages go with it, level the whole way:
+    /// a row is when something happens, which no drag can change.
+    /// </summary>
+    [AvaloniaFact]
+    public void ALifelineIsDraggedSidewaysAndKeepsItsPlaceInTime()
+    {
+        var (window, diagram) = Draw(DiagramKind.Sequence, "SampleBehaviour::Handshake");
+        var pump = diagram.Nodes.Single(n => n.Element.Name == "pump");
+        var message = diagram.Connections.First(c => c.Label == "hello : Fuel");
+        var before = pump.Location;
+        var lineBefore = message.Line.Bounds;
+
+        Drag(window, pump, new Point(pump.Width / 2, 20), new Point(120, 90), () =>
+        {
+            Assert.NotEqual(lineBefore.Right, message.Line.Bounds.Right); // the arrow follows while held
+            Assert.Equal(0, message.Line.Bounds.Height, 1); // and stays level
+            Assert.Equal(lineBefore.Top, message.Line.Bounds.Top, 1);
+        });
+
+        Assert.True(pump.Location.X > before.X, $"the lifeline did not move: {before} to {pump.Location}");
+        Assert.Equal(before.Y, pump.Location.Y);
+        Assert.Equal(lineBefore.Top, message.Line.Bounds.Top, 1);
+    }
+
+    /// <summary>What a composite state holds moves with it, and its transitions are routed again where it lands.</summary>
+    [AvaloniaFact]
+    public void ACompositeStateTakesItsStatesAlong()
+    {
+        var (window, diagram) = Draw(DiagramKind.StateMachine, "SampleBehaviour::Tank");
+        var filling = diagram.Nodes.Single(n => n.Element.Name == "filling" && !n.IsPseudoNode);
+        var slow = diagram.Nodes.Single(n => n.Element.Name == "slow");
+        var offset = slow.Location - filling.Location;
+        var before = filling.Location;
+
+        Drag(window, filling, new Point(filling.Width / 2, 18), new Point(90, 60));
+        Shoot(window, "dragged-composite");
+
+        Assert.NotEqual(before, filling.Location);
+        Assert.Equal(offset.X, (slow.Location - filling.Location).X, 1);
+        Assert.Equal(offset.Y, (slow.Location - filling.Location).Y, 1);
+    }
+
+    /// <summary>A mark's place on a time axis is what it says: a drag leaves it where it is.</summary>
+    [AvaloniaFact]
+    public void AMarkOnATimeAxisCannotBeDragged()
+    {
+        var (window, diagram) = Draw(DiagramKind.Timing, "SampleBehaviour::OneTank");
+        var band = diagram.Nodes.Single(n => n.Element.Name == "draining");
+        var before = band.Location;
+
+        Assert.False(band.IsDraggable);
+        Drag(window, band, new Point(band.Width / 2, band.Height / 2), new Point(80, 40));
+
+        Assert.Equal(before, band.Location);
+    }
+
+    /// <summary>The list greys out a behavioural kind with nothing to draw, and offers it where there is.</summary>
+    [AvaloniaFact]
+    public void TheSwitcherOffersABehaviouralKindOnlyWhereItCanBeDrawn()
+    {
+        var (_, shell) = Open(Fixture);
+        var sequence = shell.DiagramKinds.Single(k => k.Kind == DiagramKind.Sequence);
+        var timing = shell.DiagramKinds.Single(k => k.Kind == DiagramKind.Timing);
+        Assert.Equal(DiagramKindCatalog.Interaction, sequence.Group);
+        Assert.Equal(DiagramKindCatalog.Behavior, shell.DiagramKinds.Single(k => k.Kind == DiagramKind.StateMachine).Group);
+        Assert.Equal(DiagramKindCatalog.Sysml, shell.DiagramKinds.Single(k => k.Kind == DiagramKind.ActionFlow).Group);
+
+        shell.Select(shell.Workspace!.Find("SampleBehaviour::NothingHappens")!);
+        Settle();
+        Assert.False(sequence.IsAvailable);
+        Assert.False(timing.IsAvailable);
+
+        shell.Select(shell.Workspace!.Find("SampleBehaviour::Handshake")!);
+        Settle();
+        Assert.True(sequence.IsAvailable);
+        Assert.False(timing.IsAvailable);
+
+        shell.SwitchKindCommand.Execute(sequence);
+        Settle();
+        Assert.Equal(DiagramKind.Sequence, shell.ActiveKind);
+        Assert.Equal("Sequence", shell.DiagramKindLabel);
+        Assert.Equal("Handshake · Sequence", shell.DocumentCaption);
+    }
+
+    /// <summary>A drawn node's right-click and selection are still its element's, and only a real element's.</summary>
+    [AvaloniaFact]
+    public void ClickingADrawnNodeSelectsItsElement()
+    {
+        var (window, shell) = Open(Fixture);
+        shell.Select(shell.Workspace!.Find("SampleBehaviour::Handshake")!);
+        shell.OpenDiagramCommand.Execute(DiagramKind.Sequence);
+        Settle();
+
+        var diagram = Assert.IsType<DiagramDocumentViewModel>(shell.ActiveDocument);
+        var pump = diagram.Nodes.Single(n => n.Element.Name == "pump");
+        var container = window.GetVisualDescendants().OfType<Nodify.Avalonia.ItemContainer>().First(c => ReferenceEquals(c.DataContext, pump));
+        var point = container.TranslatePoint(new Point(pump.Width / 2, 20), window)!.Value;
+        window.MouseDown(point, Avalonia.Input.MouseButton.Left);
+        window.MouseUp(point, Avalonia.Input.MouseButton.Left);
+        Settle();
+
+        Assert.True(pump.IsSelected);
+        Assert.Equal("SampleBehaviour::Handshake::pump", shell.SelectedElement?.QualifiedName);
     }
 
     /// <summary>Selecting another element redraws the diagram in front, in the same tab.</summary>
