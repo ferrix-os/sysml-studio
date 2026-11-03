@@ -38,12 +38,22 @@ public static class DiagramKindCatalog
         Uml(DiagramKind.Deployment, "Deployment", Structure),
         Uml(DiagramKind.Profile, "Profile", Structure),
 
+        // Behavior
+        Uml(DiagramKind.UseCase, "Use Case", Behavior),
+        Uml(DiagramKind.Activity, "Activity", Behavior),
+        new(DiagramKind.StateMachine, "State", Behavior, "State machine", "kindState", "State machine", "Alt+D5"),
+
+        // Interaction
+        Uml(DiagramKind.Sequence, "Sequence", Interaction),
+        Uml(DiagramKind.Communication, "Communication", Interaction),
+        Uml(DiagramKind.InteractionOverview, "Interaction Overview", Interaction),
+        Uml(DiagramKind.Timing, "Timing", Interaction),
+
         // SysML
         new(DiagramKind.Definition, "Definition", Sysml, "Definition", "kindDefinition", "Definition diagram", "Alt+D1"),
         new(DiagramKind.Interconnection, "Interconnection", Sysml, "Interconnection", "kindInterconnection", "Interconnection diagram", "Alt+D2"),
         new(DiagramKind.Requirements, "Requirements", Sysml, "Requirements", "kindRequirements", "Requirements diagram", "Alt+D3"),
         new(DiagramKind.ActionFlow, "Action", Sysml, "Action flow", "kindAction", "Action flow", "Alt+D4"),
-        new(DiagramKind.StateMachine, "State", Sysml, "State machine", "kindState", "State machine", "Alt+D5"),
     ];
 
     public static DiagramKindEntry For(DiagramKind kind) => All.First(e => e.Kind == kind);

@@ -41,6 +41,23 @@ public enum DiagramKind
     /// <summary>UML profile diagram: metadata definitions as stereotypes, and what they apply to.</summary>
     Profile,
 
+    /// <summary>Use cases, their actors and subject, and what they include.</summary>
+    UseCase,
+
+    /// <summary>An action's steps and control nodes, in UML's activity notation.</summary>
+    Activity,
+
+    /// <summary>Lifelines and messages in time order, top to bottom.</summary>
+    Sequence,
+
+    /// <summary>The same messages, numbered, on the links between participants.</summary>
+    Communication,
+
+    /// <summary>An activity whose steps are interactions.</summary>
+    InteractionOverview,
+
+    /// <summary>Lifelines over an axis of what comes after what.</summary>
+    Timing,
 }
 
 /// <summary>One box. <see cref="Element"/> is what it stands for in the model.</summary>

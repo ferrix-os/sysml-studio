@@ -407,7 +407,8 @@ public sealed partial class DiagramDocumentViewModel : DocumentViewModel
         }
 
         // Past two dozen edges the labels crowd each other; the tooltip still names each one.
-        var labelled = Connections.Count <= 24;
+        // A message with no text is no use on a sequence diagram, and rows cannot crowd.
+        var labelled = Connections.Count <= 24 || diagram.Kind == DiagramKind.Sequence;
         foreach (var connection in Connections)
             connection.ShowsLabel = labelled && connection.HasLabel;
     }

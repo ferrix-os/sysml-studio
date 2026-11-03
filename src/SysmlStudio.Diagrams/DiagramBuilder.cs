@@ -30,6 +30,7 @@ public static partial class DiagramBuilder
         // still shows what it always showed first.
         var kinds = SysmlKindsFor(element);
         kinds.AddRange(StructuralKindsFor(element));
+        kinds.AddRange(BehavioralKindsFor(element));
         return kinds;
     }
 
@@ -52,7 +53,7 @@ public static partial class DiagramBuilder
         if (element.Kind is "state def" or "state" or "exhibit state" && element.Children.Any(IsState))
             kinds.Add(DiagramKind.StateMachine);
 
-        if (element.Kind is "action def" or "action" or "perform action" && element.Children.Any(IsAction))
+        if (element.Kind is "action def" or "action" or "perform action" && element.Children.Any(c => IsAction(c) || IsControlNode(c)))
             kinds.Add(DiagramKind.ActionFlow);
 
         if ((element.IsDefinition || IsTypedUsage(element))
@@ -79,6 +80,12 @@ public static partial class DiagramBuilder
         DiagramKind.Requirements => Requirements(root),
         DiagramKind.ActionFlow => ActionFlow(root),
         DiagramKind.StateMachine => StateMachine(root),
+        DiagramKind.UseCase => UseCase(root),
+        DiagramKind.Activity => ActionFlow(root, kind),
+        DiagramKind.Sequence => Sequence(root),
+        DiagramKind.Communication => Communication(root),
+        DiagramKind.InteractionOverview => ActionFlow(root, kind),
+        DiagramKind.Timing => Timing(root),
         _ => throw new ArgumentOutOfRangeException(nameof(kind)),
     };
 
@@ -206,7 +213,10 @@ public static partial class DiagramBuilder
             return null;
 
         var head = reference.Trim().Split('.')[0].Split("::")[^1].Trim();
-        return diagram.Nodes.Find(n => !n.IsPseudo && n.Element.Name == head);
+
+        // "perform x" has no name of its own, and "first x then y" means it by what it names.
+        return diagram.Nodes.Find(n => !n.IsPseudo && n.Element.Name == head)
+            ?? diagram.Nodes.Find(n => !n.IsPseudo && n.Element.Name is null && ReferenceOf(n.Element) == head);
     }
 
     // ----- requirements -------------------------------------------------------
@@ -332,15 +342,19 @@ public static partial class DiagramBuilder
 
     // ----- action flow --------------------------------------------------------
 
-    /// <summary>An action's steps, with start and done, in the order its successions give.</summary>
-    private static Diagram ActionFlow(Element root)
+    /// <summary>
+    /// An action's steps, with start and done, in the order its successions
+    /// give. The Action, Activity and Interaction Overview kinds are this one
+    /// builder: they read the same successions and differ in how a step is drawn.
+    /// </summary>
+    private static Diagram ActionFlow(Element root, DiagramKind kind = DiagramKind.ActionFlow)
     {
-        var diagram = new Diagram(DiagramKind.ActionFlow, root);
-        foreach (var child in root.Children.Where(IsAction))
-            diagram.Nodes.Add(new DiagramNode(child, ActionLabel(child), $"«{child.Kind}»"));
+        var diagram = new Diagram(kind, root);
+        foreach (var child in root.Children.Where(c => IsFlowStep(c, kind)))
+            diagram.Nodes.Add(StepNode(child, kind));
 
         var successions = root.Relations.Where(r => r.Kind == RelationKind.Succession)
-            .Concat(root.Children.Where(c => c.Kind is "succession" or "succession flow")
+            .Concat(root.Children.Where(c => c.Kind is "succession" or "succession flow" or "flow")
                 .SelectMany(c => c.Relations.Where(r => r.Kind is RelationKind.Succession or RelationKind.Flow)));
 
         foreach (var relation in successions)
@@ -348,9 +362,10 @@ public static partial class DiagramBuilder
             var from = ActionEnd(diagram, root, relation.Origin, relation.OriginReference);
             var to = ActionEnd(diagram, root, relation.Target, relation.TargetReference);
             if (from is not null && to is not null && !ReferenceEquals(from, to))
-                diagram.Edges.Add(new DiagramEdge(from, to, RelationKind.Succession));
+                diagram.Edges.Add(FlowEdge(from, to, relation));
         }
 
+        WidenBars(diagram);
         return diagram;
     }
 
@@ -376,29 +391,6 @@ public static partial class DiagramBuilder
         }
 
         return FindEnd(diagram, name);
-    }
-
-    // ----- state machine ------------------------------------------------------
-
-    /// <summary>A state definition's states and the transitions between them.</summary>
-    private static Diagram StateMachine(Element root)
-    {
-        var diagram = new Diagram(DiagramKind.StateMachine, root);
-        foreach (var child in root.Children.Where(IsState))
-            diagram.Nodes.Add(new DiagramNode(child, child.DisplayName, $"«{child.Kind}»"));
-
-        foreach (var transition in root.Children.Where(c => c.Kind == "transition"))
-        {
-            foreach (var relation in transition.Relations.Where(r => r.Kind == RelationKind.Transition))
-            {
-                var source = (relation.Origin is { } o ? diagram.NodeFor(o) : null) ?? FindEnd(diagram, relation.OriginReference);
-                var target = (relation.Target is { } t ? diagram.NodeFor(t) : null) ?? FindEnd(diagram, relation.TargetReference);
-                if (source is not null && target is not null)
-                    diagram.Edges.Add(new DiagramEdge(source, target, RelationKind.Transition, relation.Label));
-            }
-        }
-
-        return diagram;
     }
 
     // ----- helpers ------------------------------------------------------------

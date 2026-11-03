@@ -20,15 +20,16 @@ namespace SysmlStudio.Diagrams;
 /// y-up coordinates into the y-down ones every canvas uses.
 /// </para>
 /// </summary>
-public static class DiagramLayout
+public static partial class DiagramLayout
 {
     // Box geometry, matching the canvas's node template: header with the kind
     // caption and the title, then a compartment of feature lines.
     private const double HeaderHeight = 56;
+    private const double UncaptionedHeader = 44;
     private const double CompartmentChrome = 17;
     private const double FeatureLine = 19;
     private const double BoxChrome = 5 + 24;
-    private const double TitleCharacter = 7.6;
+    private const double TitleCharacter = 8.2;
     private const double MonoCharacter = 7.3;
     private const double CaptionCharacter = 8.0;
 
@@ -47,6 +48,9 @@ public static class DiagramLayout
     /// </summary>
     public static void Apply(Diagram diagram, bool measure = true)
     {
+        if (ApplyNotation(diagram, measure))
+            return;
+
         if (measure)
         {
             foreach (var node in diagram.Nodes)
@@ -81,6 +85,7 @@ public static class DiagramLayout
         Pack(blocks);
         RemoveOverlaps(diagram);
         Route(diagram, KeepLaidRoutes(blocks, before, laid));
+        FinishEdges(diagram);
     }
 
     /// <summary>An edge's route and label as the layered layout left them, at the group's origin.</summary>
@@ -130,7 +135,7 @@ public static class DiagramLayout
         var shapes = new Dictionary<DiagramNode, Node>();
         foreach (var node in component)
         {
-            var shape = new Node(CurveFactory.CreateRectangle(node.Width, node.Height, new Point()), node);
+            var shape = new Node(Outline(node, new Point()), node);
             shapes[node] = shape;
             graph.Nodes.Add(shape);
         }
@@ -177,7 +182,7 @@ public static class DiagramLayout
     private static Edge WithLabel(Edge geometryEdge, DiagramEdge edge)
     {
         if (edge.Label is { Length: > 0 } text)
-            geometryEdge.Label = new Label(LabelWidth(text), LabelHeight, geometryEdge);
+            geometryEdge.Label = new Label(LabelWidth(text), LabelHeightOf(text), geometryEdge);
         return geometryEdge;
     }
 
@@ -263,7 +268,14 @@ public static class DiagramLayout
     /// labels. Called after a layout, and again whenever boxes are moved by
     /// hand, so an edge never runs behind a box it does not belong to.
     /// </summary>
-    public static void Route(Diagram diagram) => Route(diagram, []);
+    public static void Route(Diagram diagram)
+    {
+        if (RouteNotation(diagram))
+            return;
+
+        Route(diagram, []);
+        FinishEdges(diagram);
+    }
 
     /// <summary>Routes every edge but the <paramref name="kept"/> ones, which already have a route.</summary>
     private static void Route(Diagram diagram, HashSet<DiagramEdge> kept)
@@ -294,7 +306,7 @@ public static class DiagramLayout
         foreach (var node in diagram.Nodes)
         {
             var centre = new Point(node.X + (node.Width / 2), -(node.Y + (node.Height / 2)));
-            var shape = new Node(CurveFactory.CreateRectangle(node.Width, node.Height, centre), node);
+            var shape = new Node(Outline(node, centre), node);
             shapes[node] = shape;
             graph.Nodes.Add(shape);
         }
@@ -486,7 +498,7 @@ public static class DiagramLayout
 
         var total = lengths[^1];
         var aside = (LabelWidth(text) / 2) + 6;
-        const double above = (LabelHeight / 2) + 5;
+        var above = (LabelHeightOf(text) / 2) + 5;
         foreach (var fraction in new[] { 0.5, 0.4, 0.6, 0.3, 0.7, 0.2, 0.8, 0.12, 0.88 })
         {
             var (x, y) = PointAt(points, lengths, total * fraction);
@@ -512,7 +524,7 @@ public static class DiagramLayout
     private static Box LabelBox(string text, (double X, double Y) centre)
     {
         var halfWidth = LabelWidth(text) / 2;
-        const double halfHeight = LabelHeight / 2;
+        var halfHeight = LabelHeightOf(text) / 2;
         return new Box(centre.X - halfWidth, centre.Y - halfHeight, centre.X + halfWidth, centre.Y + halfHeight);
     }
 
@@ -589,6 +601,9 @@ public static class DiagramLayout
     /// </summary>
     public static void RemoveOverlaps(Diagram diagram)
     {
+        if (KeepsItsOwnPlaces(diagram))
+            return;
+
         var placed = new List<DiagramNode>();
         foreach (var node in diagram.Nodes.OrderBy(n => n.Y).ThenBy(n => n.X))
         {
@@ -721,6 +736,12 @@ public static class DiagramLayout
     /// <summary>A box as the canvas will draw it: header, then one line per feature.</summary>
     public static void Measure(DiagramNode node)
     {
+        if (node.IsDrawn)
+        {
+            NodeMarks.Measure(node);
+            return;
+        }
+
         if (node.IsPseudo)
         {
             node.Width = node.Height = 26;
@@ -732,10 +753,13 @@ public static class DiagramLayout
         var features = node.Features.Count == 0 ? 0 : node.Features.Max(f => f.Length) * MonoCharacter;
 
         node.Width = Math.Clamp(Math.Max(Math.Max(caption, title), features) + BoxChrome, 150, 460);
-        node.Height = 2 + HeaderHeight + (node.Features.Count == 0 ? 0 : CompartmentChrome + (node.Features.Count * FeatureLine));
+        var header = node.Stereotype is null ? UncaptionedHeader : HeaderHeight;
+        node.Height = 2 + header + (node.Features.Count == 0 ? 0 : CompartmentChrome + (node.Features.Count * FeatureLine));
     }
 
     private const double LabelHeight = 14;
 
-    private static double LabelWidth(string text) => (text.Length * 6.7) + 8;
+    private static double LabelHeightOf(string text) => LabelHeight * (text.Count(c => c == '\n') + 1);
+
+    private static double LabelWidth(string text) => (text.Split('\n').Max(line => line.Length) * 6.7) + 8;
 }
